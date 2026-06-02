@@ -294,6 +294,13 @@
         <div class="field"><label class="fld">Cachê total do show (R$)</label><input id="rachaCachet" type="number" step="0.01" oninput="DB.racha.cachet=+this.value||0;saveQuiet();calcRacha()"></div>
         <label class="fld">Quem racha (desmarca quem não vai dividir)</label>
         <div class="chip-row" id="rachaWho" style="margin-bottom:12px;"></div>
+        <label class="fld">🎸 Caixinha da banda (o "5º membro")</label>
+        <div class="chip-row" id="rachaBandMode" style="margin-bottom:8px;">
+          <button class="chip" data-bm="head" onclick="setBandMode('head')">Parte igual (vira 1 cabeça)</button>
+          <button class="chip" data-bm="fixed" onclick="setBandMode('fixed')">Valor fixo</button>
+          <button class="chip" data-bm="none" onclick="setBandMode('none')">Sem caixinha</button>
+        </div>
+        <div class="field" id="rachaBandFixedWrap" style="display:none;"><label class="fld">Quanto deixar de caixinha (R$)</label><input id="rachaBandFixed" type="number" step="0.01" oninput="DB.racha.bandFixed=+this.value||0;saveQuiet();calcRacha()"></div>
         <div class="row between" style="margin-bottom:6px;"><label class="fld" style="margin:0;">Gastos a descontar</label><button class="btn ghost sm" onclick="openRachaExp()">+ gasto</button></div>
         <div id="rachaExp"></div>
       </div>
@@ -369,7 +376,7 @@ function makeSeed(){
     pix:"selim.banda@pix.com.br",
     combos:[{id:id(),name:"Camiseta + Adesivo",price:55},{id:id(),name:"Kit Fã (Camisa+Boné+Adesivo)",price:90}],
     cash:[{id:id(),type:"in",desc:"Cachê Bar do Zé",amount:600,ts:Date.now()-86400000*21},{id:id(),type:"out",desc:"Gasolina",amount:120,ts:Date.now()-86400000*21},{id:id(),type:"in",desc:"Venda merch no show",amount:240,ts:Date.now()-86400000*21}],
-    racha:{cachet:0,expenses:[],who:[]}
+    racha:{cachet:0,expenses:[],who:[],bandMode:"none",bandFixed:0}
   };
 }
 let SEED=makeSeed();
@@ -386,7 +393,10 @@ function backfill(){ const s=makeSeed(); for(const k in s){ if(DB[k]===undefined
   // garante campos novos das músicas
   (DB.songs||[]).forEach(sg=>{["tom","bpm","singer","link","notes"].forEach(f=>{if(sg[f]===undefined)sg[f]="";});if(!sg.tags)sg.tags=[];});
   (DB.events||[]).forEach(e=>{if(!e.rsvp)e.rsvp={};});
-  if(!DB.racha)DB.racha={cachet:0,expenses:[],who:[]};
+  if(!DB.racha)DB.racha={cachet:0,expenses:[],who:[],bandMode:"none",bandFixed:0};
+  if(DB.racha.bandMode===undefined)DB.racha.bandMode="none";
+  if(DB.racha.bandFixed===undefined)DB.racha.bandFixed=0;
+  (DB.cash||[]).forEach(c=>{if(!c.cat)c.cat="outro";});
 }
 function persist(){ try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){} }
 function save(){ persist(); renderAll(); pushDebounced(); }
@@ -685,34 +695,58 @@ function delCombo(cid){DB.combos=DB.combos.filter(x=>x.id!==cid);save();}
 /* ----- RACHA DO CACHÊ ----- */
 function renderRacha(){
   if($("#rachaCachet")&&document.activeElement!==$("#rachaCachet"))$("#rachaCachet").value=DB.racha.cachet||"";
-  // quem racha (default todos)
   if(!DB.racha.who||!DB.racha.who.length)DB.racha.who=DB.members.map(m=>m.id);
+  const mode=DB.racha.bandMode||"none";
   $("#rachaWho").innerHTML=DB.members.map(m=>`<button class="chip ${DB.racha.who.includes(m.id)?'sel':''}" onclick="toggleRachaWho('${m.id}')">${esc(m.name)}</button>`).join("");
+  if($("#rachaBandMode"))$$("#rachaBandMode .chip").forEach(c=>c.classList.toggle("sel",c.dataset.bm===mode));
+  if($("#rachaBandFixedWrap")){$("#rachaBandFixedWrap").style.display=mode==="fixed"?"block":"none";if(document.activeElement!==$("#rachaBandFixed"))$("#rachaBandFixed").value=DB.racha.bandFixed||"";}
   $("#rachaExp").innerHTML=(DB.racha.expenses||[]).map((e,i)=>{const m=DB.members.find(x=>x.id===e.paidBy);
     return `<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line);"><div><div style="font-size:14px;">${esc(e.desc)}</div><div style="font-size:11px;color:var(--muted);">pago por ${m?esc(m.name):'banda'}</div></div><div class="row" style="gap:6px;"><span class="money-out" style="font-family:var(--mono);">${money(e.amount)}</span><button class="iconbtn" onclick="delRachaExp(${i})" style="width:26px;height:26px;">✕</button></div></div>`;}).join("")||'<div style="color:var(--muted);font-size:13px;padding:4px 0;">Sem gastos lançados.</div>';
   calcRacha();
 }
+function setBandMode(m){DB.racha.bandMode=m;save();}
 function toggleRachaWho(mid){const i=DB.racha.who.indexOf(mid);if(i>=0)DB.racha.who.splice(i,1);else DB.racha.who.push(mid);save();}
 function openRachaExp(){showModal(`<h3>Gasto a Descontar</h3><div class="field"><label class="fld">O quê</label><input id="re_desc" placeholder="Gasolina, pedágio, cordas..."></div><div class="field"><label class="fld">Valor R$</label><input id="re_amt" type="number" step="0.01"></div><div class="field"><label class="fld">Quem pagou</label><select id="re_who">${DB.members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}<option value="">Caixa da banda</option></select></div><button class="btn primary full" onclick="saveRachaExp()">ADICIONAR</button>`);}
 function saveRachaExp(){const desc=$("#re_desc").value.trim(),amount=+$("#re_amt").value;if(!desc||!amount){toast("Preenche!");return;}DB.racha.expenses.push({desc,amount,paidBy:$("#re_who").value});closeModal();save();}
 function delRachaExp(i){DB.racha.expenses.splice(i,1);save();}
-function calcRacha(){
+function rachaShares(){
   const r=DB.racha;const cachet=+r.cachet||0;const exp=r.expenses||[];const totalExp=exp.reduce((a,e)=>a+e.amount,0);
   const who=r.who&&r.who.length?r.who:DB.members.map(m=>m.id);
-  const net=cachet-totalExp;const per=who.length?net/who.length:0;
+  const net=cachet-totalExp;const mode=r.bandMode||"none";
+  let bandShare=0,per=0;
+  if(mode==="head"){const heads=who.length+1;per=heads?net/heads:0;bandShare=net>0?per:0;}
+  else if(mode==="fixed"){bandShare=Math.min(Math.max(0,+r.bandFixed||0),Math.max(0,net));per=who.length?(net-bandShare)/who.length:0;}
+  else{per=who.length?net/who.length:0;}
   const reimb={};exp.forEach(e=>{if(e.paidBy)reimb[e.paidBy]=(reimb[e.paidBy]||0)+e.amount;});
-  const rows=DB.members.map(m=>{const inSplit=who.includes(m.id);const share=inSplit?per:0;const back=reimb[m.id]||0;const tot=share+back;
+  return {cachet,totalExp,net,mode,bandShare,per,who,reimb};
+}
+function calcRacha(){
+  const s=rachaShares();
+  const rows=DB.members.map(m=>{const inSplit=s.who.includes(m.id);const share=inSplit?s.per:0;const back=s.reimb[m.id]||0;const tot=share+back;
     if(!inSplit&&!back)return"";
     return `<div class="row between" style="padding:7px 0;border-bottom:1px solid var(--line);"><div><span style="font-weight:600;">${esc(m.name)}</span>${back?`<span style="font-size:11px;color:var(--green);"> (+${money(back)} reembolso)</span>`:''}</div><b style="font-family:var(--display);font-size:18px;color:var(--lime);">${money(tot)}</b></div>`;}).filter(Boolean).join("");
+  const bandRow=s.bandShare>0?`<div class="row between" style="padding:7px 0;border-top:1px dashed var(--line);"><div><span style="font-weight:600;">🎸 Banda (caixinha)</span><span style="font-size:11px;color:var(--muted);"> — fica no caixa</span></div><b style="font-family:var(--display);font-size:18px;color:var(--yellow);">${money(s.bandShare)}</b></div>`:"";
+  const headsTxt=s.mode==="head"?`${s.who.length} + banda`:`${s.who.length}`;
+  const caixinhaTxt=s.mode==="fixed"&&s.bandShare?` − caixinha ${money(s.bandShare)}`:"";
   $("#rachaResult").innerHTML=`<div class="card"><h3 style="font-size:16px;margin-bottom:4px;">🧮 Cada um leva pra casa</h3>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Cachê ${money(cachet)} − gastos ${money(totalExp)} = ${money(net)} ÷ ${who.length||0} cabeça(s)</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Cachê ${money(s.cachet)} − gastos ${money(s.totalExp)} = ${money(s.net)}${caixinhaTxt} ÷ ${headsTxt} cabeça(s)</div>
     ${rows||'<div style="color:var(--muted);">Bota o cachê e quem racha.</div>'}
-    <button class="btn primary full sm" style="margin-top:12px;" onclick="rachaToCaixa()">📥 LANÇAR TUDO NO CAIXA</button></div>`;
+    ${bandRow}
+    <button class="btn primary full sm" style="margin-top:12px;" onclick="rachaToCaixa()">📥 LANÇAR NO CAIXA (cachê + repasses)</button></div>`;
 }
-function rachaToCaixa(){const r=DB.racha;const cachet=+r.cachet||0;if(!cachet){toast("Bota o cachê!");return;}if(!confirm("Lançar o cachê como entrada e os gastos como saída no caixa?"))return;
-  DB.cash.push({id:id(),type:"in",desc:"Cachê (racha)",amount:cachet,ts:Date.now()});
-  (r.expenses||[]).forEach(e=>DB.cash.push({id:id(),type:"out",desc:e.desc+" (racha)",amount:e.amount,ts:Date.now()}));
-  DB.racha={cachet:0,expenses:[],who:DB.members.map(m=>m.id)};save();toast("Lançado no caixa 💰");}
+function rachaToCaixa(){
+  const s=rachaShares();
+  if(!s.cachet){toast("Bota o cachê!");return;}
+  const bandTxt=s.bandShare>0?`\n• Caixinha da banda fica no caixa: ${money(s.bandShare)}`:"";
+  if(!confirm(`Vou lançar no caixa:\n• Cachê como ENTRADA\n• Gastos pagos pela banda como SAÍDA\n• Repasse de cada integrante como SAÍDA${bandTxt}\n\nConfirma?`))return;
+  const ts=Date.now();const b="racha_"+id();const exp=DB.racha.expenses||[];
+  DB.cash.push({id:id(),type:"in",desc:"Cachê do show",amount:s.cachet,ts,cat:"cache",batch:b});
+  exp.forEach(e=>{if(!e.paidBy)DB.cash.push({id:id(),type:"out",desc:e.desc+" (gasto da banda)",amount:e.amount,ts,cat:"gasto",batch:b});});
+  DB.members.forEach(m=>{const inSplit=s.who.includes(m.id);const take=Math.round(((inSplit?s.per:0)+(s.reimb[m.id]||0))*100)/100;if(take>0)DB.cash.push({id:id(),type:"out",desc:"Repasse "+m.name,amount:take,ts,cat:"repasse",batch:b});});
+  // a caixinha da banda NÃO é debitada: sobra como saldo positivo no caixa
+  const keepMode=DB.racha.bandMode,keepFixed=+DB.racha.bandFixed||0;
+  DB.racha={cachet:0,expenses:[],who:DB.members.map(m=>m.id),bandMode:keepMode,bandFixed:keepFixed};
+  save();toast(s.bandShare>0?`Lançado! Caixinha da banda: ${money(s.bandShare)} 🎸`:"Cachê + repasses lançados 💰");}
 
 /* ============ BACKUP ============ */
 function exportData(){const blob=new Blob([JSON.stringify(DB,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="selim-backup-"+new Date().toISOString().slice(0,10)+".json";a.click();toast("Backup baixado 💾");}
