@@ -131,6 +131,18 @@
   .palco-bot{display:flex;gap:10px;padding:16px 18px calc(20px + env(safe-area-inset-bottom));}
   .palco-bot button{flex:1;padding:18px;border-radius:12px;font-family:var(--display);font-size:18px;background:#1a1a1a;color:#fff;}
   .palco-bot .nextbtn{background:var(--lime);color:#000;flex:2;}
+  .bar{height:10px;background:var(--panel-2);border-radius:6px;overflow:hidden;border:1px solid var(--line);margin-top:4px;}
+  .bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--lime),var(--lime-deep));transition:width .4s;}
+  .qg-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px;cursor:pointer;transition:.12s;}
+  .qg-card:active{transform:scale(.99);border-color:var(--lime);}
+  .qg-head{font-family:var(--display);font-size:13px;letter-spacing:2px;color:var(--lime);margin-bottom:8px;display:flex;align-items:center;gap:7px;}
+  .qg-big{font-family:var(--display);font-size:30px;line-height:1;}
+  .qg-grid{display:flex;gap:8px;flex-wrap:wrap;}
+  .qg-mini{flex:1;min-width:60px;text-align:center;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:8px 4px;}
+  .qg-mini .n{font-family:var(--display);font-size:20px;line-height:1;}
+  .qg-mini .l{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}
+  .alert-item{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .alert-item:last-child{border-bottom:none;}
 </style>
 </head>
 <body>
@@ -143,8 +155,15 @@
 </header>
 
 <main>
+  <!-- 0. QG / CENTRO DE COMANDO -->
+  <section class="screen active" id="s-qg">
+    <div class="screen-title"><span class="dot"></span>Quartel General</div>
+    <div class="screen-sub">Relatório de situação da tropa, soldado. 🎖️</div>
+    <div id="qgBoard"></div>
+  </section>
+
   <!-- 1. REPERTORIO -->
-  <section class="screen active" id="s-rep">
+  <section class="screen" id="s-rep">
     <div class="screen-title"><span class="dot"></span>Repertório Brutal</div>
     <div class="screen-sub">A lista geral de paulada + a colinha de cada uma.</div>
     <div class="row between" style="margin-bottom:12px;">
@@ -167,6 +186,7 @@
       <button class="btn yellow grow" onclick="openPalco()">🎤 MODO PALCO</button>
       <button class="btn ghost sm" onclick="clearSet()">LIMPAR</button>
     </div>
+    <button class="btn ghost full sm" style="margin-bottom:12px;" onclick="markSetlistPlayed()">✅ Marcar este setlist como TOCADO HOJE</button>
     <div id="setBuilder"></div>
     <div class="divider"></div>
     <div class="screen-sub" style="margin-bottom:8px;">CLICA PRA ADICIONAR NO SETLIST 👇</div>
@@ -179,7 +199,7 @@
     <div class="screen-sub">Shows, ensaios e o mural de glórias.</div>
     <div class="seg">
       <button class="on" data-ag="prox" onclick="agTab('prox')">PRÓXIMOS</button>
-      <button data-ag="glorias" onclick="agTab('glorias')">GLÓRIAS</button>
+      <button data-ag="glorias" onclick="agTab('glorias')">MISSÕES</button>
     </div>
     <div id="ag-prox" class="ag-pane">
       <div id="nextBox"></div>
@@ -192,9 +212,10 @@
     <div id="ag-glorias" class="ag-pane" style="display:none;">
       <div class="row" id="gloStats" style="gap:8px;margin-bottom:12px;"></div>
       <button class="btn wa full sm" style="margin-bottom:12px;" onclick="copyCV()">📋 COPIAR MINI-CURRÍCULO PRO CONTRATANTE</button>
+      <div class="field"><input id="gigSearch" oninput="renderAgenda()" placeholder="🔍 Buscar por cidade, local ou ano..."></div>
       <div class="row between" style="margin-bottom:10px;">
-        <div class="screen-sub" style="margin:0;">Shows que já rolaram</div>
-        <button class="btn primary sm" onclick="openGig()">+ SHOW FEITO</button>
+        <div class="screen-sub" style="margin:0;">Missões cumpridas 🎖️</div>
+        <button class="btn primary sm" onclick="openGig()">+ MISSÃO</button>
       </div>
       <div id="gigList"></div>
     </div>
@@ -321,7 +342,8 @@
 </main>
 
 <nav class="tabs" id="tabs">
-  <button class="on" data-s="rep" onclick="go('rep')"><span class="ic">🎸</span>Repertório</button>
+  <button class="on" data-s="qg" onclick="go('qg')"><span class="ic">🎖️</span>QG</button>
+  <button data-s="rep" onclick="go('rep')"><span class="ic">🎸</span>Repert.</button>
   <button data-s="set" onclick="go('set')"><span class="ic">📋</span>Setlist</button>
   <button data-s="agenda" onclick="go('agenda')"><span class="ic">📅</span>Agenda</button>
   <button data-s="trib" onclick="go('trib')"><span class="ic">⚖️</span>Tribunal</button>
@@ -360,7 +382,7 @@ const RAW_SONGS=[["Fome do cão",209],["Puteiro em João Pessoa (Roda Viva) II",
 function makeSeed(){
   return {
     _sv:2,
-    songs:RAW_SONGS.map(([n,d])=>({id:id(),name:n,dur:d,status:"yellow",tags:[],tom:"",bpm:"",singer:"",link:"",notes:""})),
+    songs:RAW_SONGS.map(([n,d])=>({id:id(),name:n,dur:d,status:"yellow",tags:[],tom:"",bpm:"",singer:"",link:"",notes:"",lastPlayed:"",plays:0})),
     members:[{id:id(),name:"Vocal/Guitarra",role:"Frente"},{id:id(),name:"Guitarra Base",role:"Solo"},{id:id(),name:"Baixo",role:"Grave"},{id:id(),name:"Bateria",role:"Pancadaria"}],
     setlist:[], shame:{}, shameLog:[],
     excuses:["Dormi demais","A patroa travou a porta","Esqueci a palheta/cabo","Tava no busão","O pneu furou","Esqueci que tinha ensaio"],
@@ -391,12 +413,14 @@ function load(){
 }
 function backfill(){ const s=makeSeed(); for(const k in s){ if(DB[k]===undefined) DB[k]=structuredClone(s[k]); }
   // garante campos novos das músicas
-  (DB.songs||[]).forEach(sg=>{["tom","bpm","singer","link","notes"].forEach(f=>{if(sg[f]===undefined)sg[f]="";});if(!sg.tags)sg.tags=[];});
+  (DB.songs||[]).forEach(sg=>{["tom","bpm","singer","link","notes"].forEach(f=>{if(sg[f]===undefined)sg[f]="";});if(!sg.tags)sg.tags=[];if(sg.lastPlayed===undefined)sg.lastPlayed="";if(sg.plays===undefined)sg.plays=0;});
+  (DB.gigs||[]).forEach(g=>{if(g.city===undefined)g.city="";if(!g.participants)g.participants=[];if(!g.perMember)g.perMember={};});
   (DB.events||[]).forEach(e=>{if(!e.rsvp)e.rsvp={};});
   if(!DB.racha)DB.racha={cachet:0,expenses:[],who:[],bandMode:"none",bandFixed:0};
   if(DB.racha.bandMode===undefined)DB.racha.bandMode="none";
   if(DB.racha.bandFixed===undefined)DB.racha.bandFixed=0;
   (DB.cash||[]).forEach(c=>{if(!c.cat)c.cat="outro";});
+  (DB.merch||[]).forEach(p=>{if(p.sold===undefined)p.sold=0;});
 }
 function persist(){ try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){} }
 function save(){ persist(); renderAll(); pushDebounced(); }
@@ -414,22 +438,39 @@ function showModal(html){$("#modalBox").innerHTML='<div class="modal-grip"></div
 function closeModal(){$("#modalBg").classList.remove("open");}
 
 /* ============ 1. REPERTORIO + COLINHA ============ */
+function songFresh(s){
+  if(!s.lastPlayed)return{txt:"sem registro",col:"var(--muted)",risk:false,never:true};
+  const d=Math.floor((new Date(daysFromNow(0))-new Date(s.lastPlayed))/86400000);
+  if(d>90)return{txt:`🔴 ${d}d sem tocar`,col:"var(--red)",risk:true,d};
+  if(d>=45)return{txt:`🟡 ${d}d sem tocar`,col:"var(--amber)",risk:d>60,d};
+  return{txt:d<=1?"🟢 tocada agora":`🟢 tocada há ${d}d`,col:"var(--green)",risk:false,d};
+}
+function markPlayed(sid){const s=DB.songs.find(x=>x.id===sid);if(!s)return;s.lastPlayed=daysFromNow(0);s.plays=(s.plays||0)+1;save();toast(`"${s.name}" marcada como tocada 🎵`);}
 function renderSongs(){
   const el=$("#songList");
   if(!DB.songs.length){el.innerHTML='<div class="empty"><div class="big">SEM MÚSICA</div>Adiciona a primeira paulada 🤘</div>';return;}
-  el.innerHTML=DB.songs.map(sg=>{
+  // card de risco de esquecimento (só músicas já tocadas e paradas há +60 dias)
+  const risco=DB.songs.map(s=>({s,f:songFresh(s)})).filter(o=>o.f.risk).sort((a,b)=>b.f.d-a.f.d);
+  const riscoCard=risco.length?`<div class="card" style="border-color:var(--red);">
+    <div class="qg-head" style="color:var(--red);">⚠️ RISCO DE ESQUECIMENTO</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Músicas paradas faz tempo. Bota no próximo ensaio antes que vire vexame.</div>
+    ${risco.slice(0,8).map(o=>`<div class="row between" style="padding:5px 0;border-bottom:1px solid var(--line);"><span style="font-weight:600;">${esc(o.s.name)}</span><span style="font-size:12px;color:${o.f.col};font-family:var(--mono);">${o.f.d}d</span></div>`).join("")}</div>`:"";
+  el.innerHTML=riscoCard+DB.songs.map(sg=>{
     const st=STATUS[sg.status];const tags=(sg.tags||[]).map(t=>`<span class="pill tagx">${esc(t)}</span>`).join("");
     const cola=[sg.tom&&`Tom ${esc(sg.tom)}`,sg.bpm&&`${esc(sg.bpm)} BPM`,sg.singer&&`Canta: ${esc(sg.singer)}`].filter(Boolean).join(" · ");
+    const f=songFresh(sg);
     return `<div class="card">
       <div class="row between"><div class="grow">
         <div style="font-family:var(--display);font-size:19px;letter-spacing:.5px;">${esc(sg.name)}</div>
         <div style="color:var(--muted);font-size:13px;font-family:var(--mono);margin-top:2px;">⏱ ${fmtTime(sg.dur)}${cola?' · '+cola:''}</div>
       </div><div class="row" style="gap:6px;">
         ${sg.link?`<a class="iconbtn" href="${esc(sg.link)}" target="_blank" style="text-decoration:none;">▶️</a>`:''}
+        <button class="iconbtn" onclick="markPlayed('${sg.id}')" title="Marcar como tocada hoje">🎵</button>
         <button class="iconbtn" onclick="openSong('${sg.id}')">✏️</button><button class="iconbtn" onclick="delSong('${sg.id}')">🗑️</button>
       </div></div>
       <div class="row wrap" style="gap:6px;margin-top:10px;"><span class="pill ${st.cls}">${st.emoji} ${st.label}</span>${tags}</div>
-      ${sg.notes?`<div style="margin-top:8px;font-size:13px;color:var(--amber);">📌 ${esc(sg.notes)}</div>`:''}
+      <div style="margin-top:8px;font-size:11.5px;color:${f.col};font-family:var(--mono);">⏳ ${f.txt}${sg.plays?` · tocada ${sg.plays}x`:''}</div>
+      ${sg.notes?`<div style="margin-top:6px;font-size:13px;color:var(--amber);">📌 ${esc(sg.notes)}</div>`:''}
     </div>`;
   }).join("");
 }
@@ -483,6 +524,7 @@ function toSet(sid){if(!DB.setlist.includes(sid)){DB.setlist.push(sid);save();}}
 function fromSet(i){DB.setlist.splice(i,1);save();}
 function moveSet(i,d){const j=i+d;if(j<0||j>=DB.setlist.length)return;[DB.setlist[i],DB.setlist[j]]=[DB.setlist[j],DB.setlist[i]];save();}
 function clearSet(){if(DB.setlist.length&&confirm("Limpar o setlist?")){DB.setlist=[];save();}}
+function markSetlistPlayed(){if(!DB.setlist.length){toast("Setlist vazio!");return;}if(!confirm(`Marcar as ${DB.setlist.length} músicas do setlist como tocadas hoje?`))return;const t=daysFromNow(0);DB.setlist.forEach(sid=>{const s=DB.songs.find(x=>x.id===sid);if(s){s.lastPlayed=t;s.plays=(s.plays||0)+1;}});save();toast("Setlist marcado como tocado 🎵");}
 function setText(){let t="🤘 SETLIST SELIM 🤘\n(cover dos Raimundos)\n\n";DB.setlist.forEach((sid,i)=>{const s=DB.songs.find(x=>x.id===sid);if(s){const tg=(s.tags||[]).length?"  ["+s.tags.join(" / ")+"]":"";t+=`${i+1}. ${s.name} (${fmtTime(s.dur)})${tg}\n`;}});t+=`\n⏱ DURAÇÃO: ${fmtLong(setTotalSec())} de paulada\n🎸 ${DB.setlist.length} músicas\n\nSE NÃO TÁ NA PONTA DO DEDO, CABA NÃO CUCA!`;return t;}
 function shareSetWhats(){if(!DB.setlist.length){toast("Setlist vazio!");return;}const txt=setText();navigator.clipboard?.writeText(txt).catch(()=>{});window.open("https://wa.me/?text="+encodeURIComponent(txt),"_blank");toast("Copiado + abrindo WhatsApp");}
 
@@ -537,15 +579,28 @@ function renderAgenda(){
       <div class="row" style="gap:6px;"><button class="iconbtn" onclick="openEvent('${e.id}')">✏️</button><button class="iconbtn" onclick="delEvent('${e.id}')">🗑️</button></div></div>
       <div style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px;"><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Quem vai? (${sims}/${DB.members.length})</div>${rsvpRows}</div>
     </div>`;}).join(""):'<div class="empty">Sem compromissos.</div>';
-  // glorias
-  const g=DB.gigs;const totShows=g.length,totPub=g.reduce((a,x)=>a+(+x.audience||0),0),totCache=g.reduce((a,x)=>a+(+x.cachet||0),0),totMerch=g.reduce((a,x)=>a+(+x.merch||0),0);
-  $("#gloStats").innerHTML=`<div class="stat"><div class="n">${totShows}</div><div class="l">Shows</div></div><div class="stat"><div class="n">${totPub}</div><div class="l">Público</div></div><div class="stat"><div class="n" style="font-size:18px;">${money(totCache+totMerch)}</div><div class="l">Faturado</div></div>`;
-  $("#gigList").innerHTML=g.length?[...g].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>
-    `<div class="card"><div class="row between"><div class="grow"><div style="font-family:var(--display);font-size:17px;">${esc(x.place)}</div>
-      <div style="font-size:12px;color:var(--muted);font-family:var(--mono);">${dateBR(x.date)}/${x.date.slice(0,4)} · 👥 ${x.audience||0} · ${x.songs||0} músicas</div></div>
+  // missões (histórico)
+  const gigs=DB.gigs;
+  const totShows=gigs.length,totPub=gigs.reduce((a,x)=>a+(+x.audience||0),0),totCache=gigs.reduce((a,x)=>a+(+x.cachet||0),0),totMerch=gigs.reduce((a,x)=>a+(+x.merch||0),0);
+  const maxCache=gigs.reduce((a,x)=>Math.max(a,+x.cachet||0),0);
+  const cityCount={};gigs.forEach(x=>{const c=(x.city||"").trim();if(c)cityCount[c]=(cityCount[c]||0)+1;});
+  const topCity=Object.entries(cityCount).sort((a,b)=>b[1]-a[1])[0];
+  $("#gloStats").innerHTML=`<div class="stat"><div class="n">${totShows}</div><div class="l">Missões</div></div><div class="stat"><div class="n" style="font-size:14px;">${money(totCache+totMerch)}</div><div class="l">Arrecadado</div></div><div class="stat"><div class="n" style="font-size:14px;">${money(maxCache)}</div><div class="l">Maior cachê</div></div><div class="stat"><div class="n" style="font-size:12px;">${topCity?esc(topCity[0]):'—'}</div><div class="l">Cidade nº1</div></div>`;
+  const byAsc=[...gigs].sort((a,b)=>a.date.localeCompare(b.date));const num={};byAsc.forEach((x,i)=>num[x.id]=i+1);
+  const q=($("#gigSearch")?.value||"").toLowerCase().trim();
+  let glist=[...gigs].sort((a,b)=>b.date.localeCompare(a.date));
+  if(q)glist=glist.filter(x=>((x.place||"")+" "+(x.city||"")+" "+(x.date||"")).toLowerCase().includes(q));
+  $("#gigList").innerHTML=glist.length?glist.map(x=>{
+    const pm=x.perMember||{};const parts=Object.keys(pm);
+    const pmRows=parts.length?`<div style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">🙋 Racha do cachê</div>${parts.map(mid=>{const m=DB.members.find(z=>z.id===mid);return `<div class="row between" style="font-size:12px;padding:2px 0;"><span>${m?esc(m.name):'?'}</span><span style="color:var(--lime);font-family:var(--mono);">${money(pm[mid])}</span></div>`;}).join("")}</div>`:"";
+    return `<div class="card"><div class="row between"><div class="grow">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--lime);letter-spacing:1px;">MISSÃO #${num[x.id]}</div>
+      <div style="font-family:var(--display);font-size:17px;margin-top:2px;">${esc(x.place)}</div>
+      <div style="font-size:12px;color:var(--muted);font-family:var(--mono);">${x.city?esc(x.city)+' · ':''}${dateBR(x.date)}/${x.date.slice(0,4)} · 👥 ${x.audience||0} · ${x.songs||0} músicas</div></div>
       <div class="row" style="gap:6px;"><button class="iconbtn" onclick="openGig('${x.id}')">✏️</button><button class="iconbtn" onclick="delGig('${x.id}')">🗑️</button></div></div>
       <div class="row wrap" style="gap:6px;margin-top:8px;"><span class="pill green">Cachê ${money(x.cachet)}</span><span class="pill lime">Merch ${money(x.merch)}</span></div>
-      ${x.notes?`<div style="margin-top:8px;font-size:13px;color:var(--muted);">"${esc(x.notes)}"</div>`:''}</div>`).join(""):'<div class="empty">Nenhum show registrado ainda.</div>';
+      ${x.notes?`<div style="margin-top:8px;font-size:13px;color:var(--muted);">"${esc(x.notes)}"</div>`:''}
+      ${pmRows}</div>`;}).join(""):'<div class="empty">'+(q?'Nada encontrado pra essa busca.':'Nenhuma missão registrada ainda.')+'</div>';
 }
 function setRsvp(eid,mid,v){const e=DB.events.find(x=>x.id===eid);if(!e)return;if(!e.rsvp)e.rsvp={};e.rsvp[mid]=e.rsvp[mid]===v?"":v;save();}
 function openEvent(eid){
@@ -568,19 +623,24 @@ function saveEvent(eid){const title=$("#ev_title").value.trim();if(!title){toast
   closeModal();save();toast("Agendado 📅");}
 function delEvent(eid){if(confirm("Apagar compromisso?")){DB.events=DB.events.filter(x=>x.id!==eid);save();}}
 function openGig(gid){
-  const g=gid?DB.gigs.find(x=>x.id===gid):{date:daysFromNow(0),place:"",cachet:0,audience:0,merch:0,songs:0,notes:""};
-  showModal(`<h3>${gid?"Editar":"Novo"} Show Feito</h3>
-    <div class="field"><label class="fld">Local</label><input id="g_place" value="${esc(g.place)}" placeholder="Onde rolou"></div>
-    <div class="field"><label class="fld">Data</label><input id="g_date" type="date" value="${g.date}"></div>
+  const g=gid?DB.gigs.find(x=>x.id===gid):{date:daysFromNow(0),place:"",city:"",cachet:0,audience:0,merch:0,songs:0,notes:"",participants:DB.members.map(m=>m.id)};
+  const chips=DB.members.map(m=>`<button class="chip ${(g.participants||[]).includes(m.id)?'sel':''}" data-mid="${m.id}" onclick="this.classList.toggle('sel')">${esc(m.name)}</button>`).join("");
+  showModal(`<h3>${gid?"Editar":"Nova"} Missão 🎖️</h3>
+    <div class="field"><label class="fld">Local</label><input id="g_place" value="${esc(g.place)}" placeholder="Bar do Zé / Moto Clube..."></div>
+    <div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Cidade</label><input id="g_city" value="${esc(g.city||'')}" placeholder="Marília/SP"></div><div class="field grow"><label class="fld">Data</label><input id="g_date" type="date" value="${g.date}"></div></div>
     <div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Cachê R$</label><input id="g_cachet" type="number" value="${g.cachet}"></div><div class="field grow"><label class="fld">Merch vendido R$</label><input id="g_merch" type="number" value="${g.merch}"></div></div>
     <div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Público</label><input id="g_aud" type="number" value="${g.audience}"></div><div class="field grow"><label class="fld">Nº músicas</label><input id="g_songs" type="number" value="${g.songs}"></div></div>
-    <div class="field"><label class="fld">Causo do show</label><input id="g_notes" value="${esc(g.notes)}" placeholder="O que rolou de memorável"></div>
-    <button class="btn primary full" onclick="saveGig('${gid||''}')">SALVAR</button>`);
+    <label class="fld">Quem rachou o cachê (divide igual)</label><div class="chip-row" id="g_parts" style="margin-bottom:10px;">${chips}</div>
+    <div class="field"><label class="fld">Observações</label><input id="g_notes" value="${esc(g.notes)}" placeholder="Casa lotada / retorno ruim / convidaram pra voltar..."></div>
+    <button class="btn primary full" onclick="saveGig('${gid||''}')">SALVAR MISSÃO</button>`);
 }
 function saveGig(gid){const place=$("#g_place").value.trim();if(!place){toast("Cadê o local?");return;}
-  const data={place,date:$("#g_date").value,cachet:+$("#g_cachet").value||0,merch:+$("#g_merch").value||0,audience:+$("#g_aud").value||0,songs:+$("#g_songs").value||0,notes:$("#g_notes").value.trim()};
+  const cachet=+$("#g_cachet").value||0;
+  const parts=$$("#g_parts .chip.sel").map(c=>c.dataset.mid);
+  const perMember={};if(parts.length&&cachet){const per=Math.round(cachet/parts.length*100)/100;parts.forEach(mid=>perMember[mid]=per);}
+  const data={place,city:$("#g_city").value.trim(),date:$("#g_date").value,cachet,merch:+$("#g_merch").value||0,audience:+$("#g_aud").value||0,songs:+$("#g_songs").value||0,notes:$("#g_notes").value.trim(),participants:parts,perMember};
   if(gid)Object.assign(DB.gigs.find(x=>x.id===gid),data);else DB.gigs.push({id:id(),...data});
-  closeModal();save();toast("Mais uma pro currículo 🏆");}
+  closeModal();save();toast("Missão pro currículo 🎖️");}
 function delGig(gid){if(confirm("Apagar esse show do histórico?")){DB.gigs=DB.gigs.filter(x=>x.id!==gid);save();}}
 function copyCV(){const g=DB.gigs;const casas=new Set(g.map(x=>x.place)).size;const pub=g.reduce((a,x)=>a+(+x.audience||0),0);
   const txt=`🤘 SELIM — cover dos Raimundos\n\nJá mandamos paulada em ${casas} casa(s)/evento(s), pra mais de ${pub} pessoas no total.\nRepertório com ${DB.songs.length} músicas dos Raimundos na manga.\nMotoclube, bar, aniversário de rockeiro — a gente toca!\n\nChama no zap pra fechar a data. 🎸`;
@@ -668,30 +728,62 @@ function delContact(cid){if(confirm("Apagar compadre?")){DB.contacts=DB.contacts
 
 /* ============ 6. CAIXA + RACHA + MERCH + BALCAO ============ */
 function shopTab(t){$$(".shop-pane").forEach(p=>p.style.display="none");$("#shop-"+t).style.display="block";$$(".seg button[data-st]").forEach(b=>b.classList.toggle("on",b.dataset.st===t));}
+const CAT={cache:"🎤",repasse:"🙋",gasto:"⛽",venda:"👕",producao:"🏭",cofre:"🐷",outro:"💵"};
 function renderShop(){
   const ins=DB.cash.filter(c=>c.type==="in").reduce((a,c)=>a+c.amount,0),outs=DB.cash.filter(c=>c.type==="out").reduce((a,c)=>a+c.amount,0),saldo=ins-outs;
   $("#saldoVal").textContent=money(saldo);$("#saldoVal").style.color=saldo>=0?"var(--lime)":"var(--red)";$("#totalIn").textContent=money(ins);$("#totalOut").textContent=money(outs);
   const sorted=[...DB.cash].sort((a,b)=>b.ts-a.ts);
-  $("#cashList").innerHTML=sorted.length?sorted.map(c=>`<div class="card" style="padding:11px 13px;"><div class="row between"><div class="grow"><div style="font-weight:600;">${esc(c.desc)}</div><div style="font-size:11px;color:var(--muted);font-family:var(--mono);">${new Date(c.ts).toLocaleDateString("pt-BR")}</div></div><div class="row" style="gap:8px;"><div class="${c.type==='in'?'money-in':'money-out'}" style="font-family:var(--display);font-size:18px;">${c.type==='in'?'+':'–'}${money(c.amount)}</div><button class="iconbtn" onclick="delCash('${c.id}')" style="width:28px;height:28px;">✕</button></div></div></div>`).join(""):'<div class="empty">Caixa zerado.</div>';
+  $("#cashList").innerHTML=sorted.length?sorted.map(c=>{const ic=CAT[c.cat]||CAT.outro;
+    return `<div class="card" style="padding:11px 13px;">
+      <div class="row between" onclick="editCash('${c.id}')" style="cursor:pointer;">
+        <div class="row grow" style="gap:10px;min-width:0;"><span style="font-size:18px;">${ic}</span>
+          <div class="grow" style="min-width:0;"><div style="font-weight:600;">${esc(c.desc)}</div>
+          <div style="font-size:11px;color:var(--muted);font-family:var(--mono);">${new Date(c.ts).toLocaleDateString("pt-BR")}${c.batch?' · lote':''} · toque pra editar</div></div></div>
+        <div class="${c.type==='in'?'money-in':'money-out'}" style="font-family:var(--display);font-size:18px;white-space:nowrap;">${c.type==='in'?'+':'–'}${money(c.amount)}</div>
+      </div>
+      <div class="row" style="gap:6px;margin-top:8px;justify-content:flex-end;">${c.batch?`<button class="btn ghost sm" onclick="estornoBatch('${c.batch}')">↩️ estornar lote</button>`:''}<button class="btn ghost sm" onclick="delCash('${c.id}')">🗑️ apagar</button></div>
+    </div>`;}).join(""):'<div class="empty">Caixa zerado.</div>';
   renderRacha();
-  $("#merchList").innerHTML=DB.merch.length?DB.merch.map(p=>{const st=MERCH_STATUS[p.status];const margin=p.price-p.cost;const low=p.stock<=p.low&&p.status==="pronto";
-    return `<div class="card"><div class="row between"><div class="grow"><div style="font-family:var(--display);font-size:17px;">${esc(p.name)}</div><div style="font-size:11px;color:var(--muted);">${esc(p.type)}</div></div><div class="row" style="gap:6px;"><button class="iconbtn" onclick="openMerch('${p.id}')">✏️</button><button class="iconbtn" onclick="delMerch('${p.id}')">🗑️</button></div></div><div class="row wrap" style="gap:6px;margin:10px 0;"><span class="pill ${st.c}">${st.l}</span>${low?'<span class="pill" style="background:var(--amber);color:#0e0f0d;border-color:var(--amber);">⚠️ Tá Acabando!</span>':''}</div><div class="row between" style="font-size:13px;color:var(--muted);font-family:var(--mono);"><span>Custo ${money(p.cost)}</span><span>Venda ${money(p.price)}</span><span style="color:var(--green);">Lucro ${money(margin)}</span><span>Est: <b style="color:${low?'var(--amber)':'var(--ink)'};">${p.stock}</b></span></div></div>`;}).join(""):'<div class="empty">Nenhum produto.</div>';
+  const valEst=DB.merch.reduce((a,p)=>a+p.stock*p.price,0),custoEst=DB.merch.reduce((a,p)=>a+p.stock*p.cost,0);
+  const resumo=`<div class="row" style="gap:8px;margin-bottom:10px;"><div class="stat"><div class="n" style="font-size:16px;">${money(valEst)}</div><div class="l">Estoque (a preço de venda)</div></div><div class="stat"><div class="n" style="font-size:16px;color:var(--green);">${money(valEst-custoEst)}</div><div class="l">Lucro se vender tudo</div></div></div>`;
+  $("#merchList").innerHTML=resumo+(DB.merch.length?DB.merch.map(p=>{const st=MERCH_STATUS[p.status];const margin=p.price-p.cost;const low=p.stock<=p.low&&p.status==="pronto";
+    return `<div class="card"><div class="row between"><div class="grow"><div style="font-family:var(--display);font-size:17px;">${esc(p.name)}</div><div style="font-size:11px;color:var(--muted);">${esc(p.type)}</div></div><div class="row" style="gap:6px;"><button class="iconbtn" onclick="openMerch('${p.id}')">✏️</button><button class="iconbtn" onclick="delMerch('${p.id}')">🗑️</button></div></div>
+      <div class="row wrap" style="gap:6px;margin:10px 0;"><span class="pill ${st.c}">${st.l}</span>${low?'<span class="pill" style="background:var(--amber);color:#0e0f0d;border-color:var(--amber);">⚠️ Tá Acabando!</span>':''}</div>
+      <div class="row between" style="font-size:13px;color:var(--muted);font-family:var(--mono);"><span>Custo ${money(p.cost)}</span><span>Venda ${money(p.price)}</span><span style="color:var(--green);">Lucro ${money(margin)}</span><span>Est: <b style="color:${low?'var(--amber)':'var(--ink)'};">${p.stock}</b></span></div>
+      <div class="row" style="gap:8px;margin-top:10px;"><button class="btn primary grow sm" onclick="sellMerch('${p.id}')">💵 VENDER</button><button class="btn ghost grow sm" onclick="produceMerch('${p.id}')">🏭 REPOR ESTOQUE</button></div></div>`;}).join(""):'<div class="empty">Nenhum produto.</div>');
   if($("#pixKey"))$("#pixKey").value=DB.pix;
   const sellable=DB.merch.filter(p=>p.status==="pronto"||p.stock>0);
-  $("#priceTable").innerHTML=(sellable.length?sellable:DB.merch).map(p=>`<div class="row between" style="padding:7px 0;border-bottom:1px solid var(--line);"><span>${esc(p.name)}</span><b style="color:var(--lime);font-family:var(--display);font-size:18px;">${money(p.price)}</b></div>`).join("")||'<div style="color:var(--muted);">Cadastre produtos.</div>';
-  $("#comboList").innerHTML=DB.combos.length?DB.combos.map(c=>`<div class="row between" style="padding:7px 0;border-bottom:1px solid var(--line);"><span>${esc(c.name)}</span><div class="row" style="gap:8px;"><b style="color:var(--yellow);font-family:var(--display);font-size:18px;">${money(c.price)}</b><button class="iconbtn" onclick="delCombo('${c.id}')" style="width:26px;height:26px;">✕</button></div></div>`).join(""):'<div style="color:var(--muted);font-size:13px;">Sem combos.</div>';
+  $("#priceTable").innerHTML=(sellable.length?sellable:DB.merch).map(p=>`<div class="row between" style="padding:8px 0;border-bottom:1px solid var(--line);"><div><div>${esc(p.name)}</div><div style="font-size:11px;color:var(--muted);">estoque: ${p.stock}</div></div><div class="row" style="gap:8px;"><b style="color:var(--lime);font-family:var(--display);font-size:18px;">${money(p.price)}</b><button class="btn primary sm" onclick="sellMerch('${p.id}')">VENDER</button></div></div>`).join("")||'<div style="color:var(--muted);">Cadastre produtos no Merch.</div>';
+  $("#comboList").innerHTML=DB.combos.length?DB.combos.map(c=>`<div class="row between" style="padding:8px 0;border-bottom:1px solid var(--line);"><span>${esc(c.name)}</span><div class="row" style="gap:6px;"><b style="color:var(--yellow);font-family:var(--display);font-size:18px;">${money(c.price)}</b><button class="btn primary sm" onclick="sellCombo('${c.id}')">VENDER</button><button class="iconbtn" onclick="openCombo('${c.id}')" style="width:26px;height:26px;">✏️</button><button class="iconbtn" onclick="delCombo('${c.id}')" style="width:26px;height:26px;">✕</button></div></div>`).join(""):'<div style="color:var(--muted);font-size:13px;">Sem combos.</div>';
 }
-function openCash(type){showModal(`<h3>${type==='in'?'➕ Entrada':'➖ Saída'} de Grana</h3><div class="field"><label class="fld">Descrição</label><input id="c_desc" placeholder="${type==='in'?'Cachê / venda merch':'Gasolina / cordas / estúdio'}"></div><div class="field"><label class="fld">Valor (R$)</label><input id="c_amt" type="number" step="0.01" placeholder="0,00"></div><button class="btn ${type==='in'?'primary':'danger'} full" onclick="saveCash('${type}')">REGISTRAR</button>`);}
-function saveCash(type){const desc=$("#c_desc").value.trim(),amt=+$("#c_amt").value;if(!desc||!amt){toast("Preenche tudo!");return;}DB.cash.push({id:id(),type,desc,amount:amt,ts:Date.now()});closeModal();save();toast(type==='in'?"💰 Entrou!":"📉 Anotado");}
-function delCash(cid){if(confirm("Apagar lançamento?")){DB.cash=DB.cash.filter(x=>x.id!==cid);save();}}
+function openCash(type){showModal(`<h3>${type==='in'?'➕ Entrada':'➖ Saída'} de Grana</h3><div class="field"><label class="fld">Descrição</label><input id="c_desc" placeholder="${type==='in'?'Cachê / venda / etc':'Gasolina / cordas / estúdio'}"></div><div class="field"><label class="fld">Valor (R$)</label><input id="c_amt" type="number" step="0.01" placeholder="0,00"></div><button class="btn ${type==='in'?'primary':'danger'} full" onclick="saveCash('${type}')">REGISTRAR</button>`);}
+function saveCash(type){const desc=$("#c_desc").value.trim(),amt=+$("#c_amt").value;if(!desc||!amt){toast("Preenche tudo!");return;}DB.cash.push({id:id(),type,desc,amount:amt,ts:Date.now(),cat:"outro"});closeModal();save();toast(type==='in'?"💰 Entrou!":"📉 Anotado");}
+function editCash(cid){const c=DB.cash.find(x=>x.id===cid);if(!c)return;const d=new Date(c.ts);const iso=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  showModal(`<h3>Editar Lançamento</h3>
+    <label class="fld">Tipo</label><div class="chip-row" id="ec_type" style="margin-bottom:12px;"><button class="chip ${c.type==='in'?'sel':''}" data-t="in" onclick="pickCashType('in')">➕ Entrada</button><button class="chip ${c.type==='out'?'sel':''}" data-t="out" onclick="pickCashType('out')">➖ Saída</button></div>
+    <div class="field"><label class="fld">Descrição</label><input id="ec_desc" value="${esc(c.desc)}"></div>
+    <div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Valor R$</label><input id="ec_amt" type="number" step="0.01" value="${c.amount}"></div><div class="field grow"><label class="fld">Data</label><input id="ec_date" type="date" value="${iso}"></div></div>
+    <button class="btn primary full" onclick="saveCashEdit('${cid}')">SALVAR</button>
+    <button class="btn danger full sm" style="margin-top:8px;" onclick="delCash('${cid}')">APAGAR LANÇAMENTO</button>`);
+  $("#modalBox").dataset.ct=c.type;}
+function pickCashType(t){$("#modalBox").dataset.ct=t;$$("#ec_type .chip").forEach(c=>c.classList.toggle("sel",c.dataset.t===t));}
+function saveCashEdit(cid){const c=DB.cash.find(x=>x.id===cid);if(!c)return;const desc=$("#ec_desc").value.trim(),amt=+$("#ec_amt").value;if(!desc||!amt){toast("Preenche tudo!");return;}c.desc=desc;c.amount=amt;c.type=$("#modalBox").dataset.ct;const dt=$("#ec_date").value;if(dt)c.ts=new Date(dt+"T12:00:00").getTime();closeModal();save();toast("Lançamento atualizado ✏️");}
+function delCash(cid){if(confirm("Apagar esse lançamento?")){DB.cash=DB.cash.filter(x=>x.id!==cid);closeModal();save();}}
+function estornoBatch(b){if(confirm("Estornar TODO esse lançamento de uma vez (cachê + repasses + gastos do mesmo show)?")){DB.cash=DB.cash.filter(x=>x.batch!==b);closeModal();save();toast("Lote estornado ↩️");}}
 function openMerch(pid){const p=pid?DB.merch.find(x=>x.id===pid):{name:"",type:"Camiseta",status:"ideia",cost:0,price:0,stock:0,low:5};const opts=Object.entries(MERCH_STATUS).map(([k,v])=>`<option value="${k}" ${p.status===k?'selected':''}>${v.l}</option>`).join("");
-  showModal(`<h3>${pid?"Editar":"Novo"} Produto</h3><div class="field"><label class="fld">Nome</label><input id="p_name" value="${esc(p.name)}"></div><div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Tipo</label><input id="p_type" value="${esc(p.type)}"></div><div class="field grow"><label class="fld">Status</label><select id="p_status">${opts}</select></div></div><div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Custo R$</label><input id="p_cost" type="number" step="0.01" value="${p.cost}"></div><div class="field grow"><label class="fld">Venda R$</label><input id="p_price" type="number" step="0.01" value="${p.price}"></div></div><div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Estoque</label><input id="p_stock" type="number" value="${p.stock}"></div><div class="field grow"><label class="fld">Alerta abaixo de</label><input id="p_low" type="number" value="${p.low}"></div></div><button class="btn primary full" onclick="saveMerch('${pid||""}')">SALVAR</button>`);}
+  showModal(`<h3>${pid?"Editar":"Novo"} Produto</h3><div class="field"><label class="fld">Nome</label><input id="p_name" value="${esc(p.name)}"></div><div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Tipo</label><input id="p_type" value="${esc(p.type)}"></div><div class="field grow"><label class="fld">Status</label><select id="p_status">${opts}</select></div></div><div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Custo R$</label><input id="p_cost" type="number" step="0.01" value="${p.cost}"></div><div class="field grow"><label class="fld">Venda R$</label><input id="p_price" type="number" step="0.01" value="${p.price}"></div></div><div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Estoque</label><input id="p_stock" type="number" value="${p.stock}"></div><div class="field grow"><label class="fld">Alerta abaixo de</label><input id="p_low" type="number" value="${p.low}"></div></div><div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Dica: pra mexer no estoque com lançamento no caixa, use os botões VENDER e REPOR. Esse campo de estoque é só pra correção manual.</div><button class="btn primary full" onclick="saveMerch('${pid||""}')">SALVAR</button>`);}
 function saveMerch(pid){const name=$("#p_name").value.trim();if(!name){toast("Nome!");return;}const data={name,type:$("#p_type").value.trim(),status:$("#p_status").value,cost:+$("#p_cost").value||0,price:+$("#p_price").value||0,stock:+$("#p_stock").value||0,low:+$("#p_low").value||0};if(pid)Object.assign(DB.merch.find(x=>x.id===pid),data);else DB.merch.push({id:id(),...data});closeModal();save();}
 function delMerch(pid){if(confirm("Apagar produto?")){DB.merch=DB.merch.filter(x=>x.id!==pid);save();}}
+function sellMerch(pid){const p=DB.merch.find(x=>x.id===pid);if(!p)return;showModal(`<h3>💵 Vender — ${esc(p.name)}</h3><div style="color:var(--muted);font-size:13px;margin-bottom:12px;">Preço ${money(p.price)} · Estoque: ${p.stock}</div><div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Quantidade</label><input id="sl_qty" type="number" min="1" value="1"></div><div class="field grow"><label class="fld">Preço unitário (dá pra descontar)</label><input id="sl_price" type="number" step="0.01" value="${p.price}"></div></div><button class="btn primary full" onclick="doSell('${pid}')">REGISTRAR VENDA 💵</button>`);}
+function doSell(pid){const p=DB.merch.find(x=>x.id===pid);const qty=Math.max(1,+$("#sl_qty").value||1);const pr=+$("#sl_price").value||p.price;if(qty>p.stock&&!confirm(`Você tem só ${p.stock} em estoque. Vender ${qty} assim mesmo? (o estoque vai ficar negativo)`))return;p.stock-=qty;p.sold=(p.sold||0)+qty;const total=Math.round(qty*pr*100)/100;DB.cash.push({id:id(),type:"in",desc:`Venda: ${qty}x ${p.name}`,amount:total,ts:Date.now(),cat:"venda"});closeModal();save();toast(`Vendido! +${money(total)} 💵`);}
+function produceMerch(pid){const p=DB.merch.find(x=>x.id===pid);if(!p)return;showModal(`<h3>🏭 Repor estoque — ${esc(p.name)}</h3><div style="color:var(--muted);font-size:13px;margin-bottom:12px;">Custo ${money(p.cost)}/un · Estoque: ${p.stock}</div><div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Quantidade</label><input id="pr_qty" type="number" min="1" value="1"></div><div class="field grow"><label class="fld">Custo unitário</label><input id="pr_cost" type="number" step="0.01" value="${p.cost}"></div></div><label class="fld">Debitar esse custo do caixa?</label><div class="chip-row" id="pr_pay" style="margin-bottom:12px;"><button class="chip sel" onclick="this.classList.toggle('sel')">Sim, tirar do caixa da banda</button></div><button class="btn primary full" onclick="doProduce('${pid}')">CONFIRMAR 🏭</button>`);}
+function doProduce(pid){const p=DB.merch.find(x=>x.id===pid);const qty=Math.max(1,+$("#pr_qty").value||1);const ct=+$("#pr_cost").value||0;p.stock+=qty;if(ct)p.cost=ct;const pay=$("#pr_pay .chip").classList.contains("sel");if(pay&&ct>0){const total=Math.round(qty*ct*100)/100;DB.cash.push({id:id(),type:"out",desc:`Produção: ${qty}x ${p.name}`,amount:total,ts:Date.now(),cat:"producao"});}if(p.status==="ideia")p.status="grafica";closeModal();save();toast(`Estoque +${qty} 🏭`);}
 function copyPix(){navigator.clipboard?.writeText(DB.pix).then(()=>toast("Pix copiado!"));}
-function openCombo(){showModal(`<h3>Novo Combo</h3><div class="field"><label class="fld">Nome</label><input id="cb_name" placeholder="Camisa + Adesivo"></div><div class="field"><label class="fld">Preço R$</label><input id="cb_price" type="number" step="0.01"></div><button class="btn primary full" onclick="saveCombo()">ADICIONAR</button>`);}
-function saveCombo(){const name=$("#cb_name").value.trim(),price=+$("#cb_price").value;if(!name||!price){toast("Preenche!");return;}DB.combos.push({id:id(),name,price});closeModal();save();}
-function delCombo(cid){DB.combos=DB.combos.filter(x=>x.id!==cid);save();}
+function sellCombo(cid){const c=DB.combos.find(x=>x.id===cid);if(!c)return;showModal(`<h3>🔥 Vender combo — ${esc(c.name)}</h3><div style="color:var(--muted);font-size:13px;margin-bottom:10px;">Preço ${money(c.price)}</div><div class="field"><label class="fld">Quantos combos?</label><input id="cs_qty" type="number" min="1" value="1"></div><div style="font-size:12px;color:var(--amber);margin-bottom:12px;">⚠️ O combo registra a entrada no caixa, mas não baixa o estoque sozinho (é um pacote). Se precisar, ajuste o estoque dos itens no Merch.</div><button class="btn primary full" onclick="doSellCombo('${cid}')">REGISTRAR VENDA 💵</button>`);}
+function doSellCombo(cid){const c=DB.combos.find(x=>x.id===cid);const qty=Math.max(1,+$("#cs_qty").value||1);const total=Math.round(qty*c.price*100)/100;DB.cash.push({id:id(),type:"in",desc:`Venda combo: ${qty}x ${c.name}`,amount:total,ts:Date.now(),cat:"venda"});closeModal();save();toast(`Combo vendido! +${money(total)} 💵`);}
+function openCombo(cid){const c=cid?DB.combos.find(x=>x.id===cid):{name:"",price:0};showModal(`<h3>${cid?"Editar":"Novo"} Combo</h3><div class="field"><label class="fld">Nome</label><input id="cb_name" value="${esc(c.name)}" placeholder="Camisa + Adesivo"></div><div class="field"><label class="fld">Preço R$</label><input id="cb_price" type="number" step="0.01" value="${c.price||''}"></div><button class="btn primary full" onclick="saveCombo('${cid||''}')">SALVAR</button>`);}
+function saveCombo(cid){const name=$("#cb_name").value.trim(),price=+$("#cb_price").value;if(!name||!price){toast("Preenche!");return;}if(cid)Object.assign(DB.combos.find(x=>x.id===cid),{name,price});else DB.combos.push({id:id(),name,price});closeModal();save();}
+function delCombo(cid){if(confirm("Apagar combo?")){DB.combos=DB.combos.filter(x=>x.id!==cid);save();}}
 /* ----- RACHA DO CACHÊ ----- */
 function renderRacha(){
   if($("#rachaCachet")&&document.activeElement!==$("#rachaCachet"))$("#rachaCachet").value=DB.racha.cachet||"";
@@ -789,7 +881,60 @@ function clearSync(){localStorage.removeItem("selim_sync");syncOn=false;if(sb){t
 (function(){const icon="data:image/png;base64,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";const mani={name:"Selim — Quartel General",short_name:"SELIM",display:"standalone",background_color:"#0e0f0d",theme_color:"#0e0f0d",orientation:"portrait",icons:[{src:icon,sizes:"512x512",type:"image/png",purpose:"any maskable"}]};const blob=new Blob([JSON.stringify(mani)],{type:"application/json"});const l=document.createElement("link");l.rel="manifest";l.href=URL.createObjectURL(blob);document.head.appendChild(l);})();
 
 /* ============ RENDER + INIT ============ */
-function renderAll(){renderSongs();renderSet();renderAgenda();renderShame();renderRoad();renderShop();}
+function renderQG(){
+  const today=daysFromNow(0);
+  const upcoming=[...DB.events].filter(e=>e.date>=today).sort((a,b)=>a.date.localeCompare(b.date));
+  const nx=upcoming.find(e=>e.type==="show")||upcoming[0];
+  let card1;
+  if(nx){const diff=Math.ceil((new Date(nx.date)-new Date(today))/86400000);
+    card1=`<div class="qg-card" onclick="go('agenda')">
+      <div class="qg-head">🎯 PRÓXIMA MISSÃO</div>
+      <div class="qg-big">${esc(nx.place||nx.title)}</div>
+      <div style="color:var(--muted);font-family:var(--mono);font-size:13px;margin-top:4px;">${esc(nx.title)} · ${dateBR(nx.date)}/${nx.date.slice(0,4)} ${esc(nx.time||"")}</div>
+      <div style="font-family:var(--display);font-size:22px;color:var(--lime);margin-top:8px;">${diff===0?"É HOJE, SOLDADO! 🔥":diff===1?"É AMANHÃ! 🔥":"FALTAM "+diff+" DIAS"}</div>
+    </div>`;
+  } else card1=`<div class="qg-card" onclick="go('agenda')"><div class="qg-head">🎯 PRÓXIMA MISSÃO</div><div style="color:var(--muted);">Nenhuma missão marcada. Bora arrumar show!</div></div>`;
+
+  const tot=DB.songs.length,pron=DB.songs.filter(s=>s.status==="green").length,cai=DB.songs.filter(s=>s.status==="yellow").length,tira=DB.songs.filter(s=>s.status==="red").length;
+  const pct=tot?Math.round(pron/tot*100):0;
+  const card2=`<div class="qg-card" onclick="go('rep')"><div class="qg-head">🎸 REPERTÓRIO</div>
+    <div class="row between"><div class="qg-big">${tot}</div><div style="color:var(--muted);font-size:12px;">${pct}% na ponta do dedo</div></div>
+    <div class="bar"><i style="width:${pct}%;"></i></div>
+    <div class="qg-grid" style="margin-top:10px;"><div class="qg-mini"><div class="n" style="color:var(--green);">${pron}</div><div class="l">🟢 Prontas</div></div><div class="qg-mini"><div class="n" style="color:var(--yellow);">${cai}</div><div class="l">🟡 Caindo</div></div><div class="qg-mini"><div class="n" style="color:var(--red);">${tira}</div><div class="l">🔴 Tira</div></div></div></div>`;
+
+  const ins=DB.cash.filter(c=>c.type==="in").reduce((a,c)=>a+c.amount,0),outs=DB.cash.filter(c=>c.type==="out").reduce((a,c)=>a+c.amount,0),saldo=ins-outs;
+  const now=new Date(),ym=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
+  const inMes=DB.cash.filter(c=>c.type==="in"&&new Date(c.ts).toISOString().slice(0,7)===ym).reduce((a,c)=>a+c.amount,0);
+  const outMes=DB.cash.filter(c=>c.type==="out"&&new Date(c.ts).toISOString().slice(0,7)===ym).reduce((a,c)=>a+c.amount,0);
+  const card3=`<div class="qg-card" onclick="go('shop')"><div class="qg-head">💰 CAIXA</div>
+    <div class="qg-big" style="color:${saldo>=0?'var(--lime)':'var(--red)'};">${money(saldo)}</div>
+    <div style="font-size:11px;color:var(--muted);">saldo da banda</div>
+    <div class="qg-grid" style="margin-top:10px;"><div class="qg-mini"><div class="n" style="color:var(--green);font-size:15px;">${money(inMes)}</div><div class="l">↑ Entrou no mês</div></div><div class="qg-mini"><div class="n" style="color:var(--red);font-size:15px;">${money(outMes)}</div><div class="l">↓ Saiu no mês</div></div></div></div>`;
+
+  const totStock=DB.merch.reduce((a,p)=>a+Math.max(0,p.stock),0);
+  const semEstoque=DB.merch.filter(p=>p.status==="pronto"&&p.stock<=0);
+  const vendidos=[...DB.merch].filter(p=>p.sold>0).sort((a,b)=>b.sold-a.sold);
+  const top=vendidos[0];
+  const card4=`<div class="qg-card" onclick="go('shop')"><div class="qg-head">👕 MERCH</div>
+    <div class="qg-grid"><div class="qg-mini"><div class="n">${totStock}</div><div class="l">Itens em estoque</div></div><div class="qg-mini"><div class="n" style="color:${semEstoque.length?'var(--amber)':'var(--ink)'};">${semEstoque.length}</div><div class="l">Sem estoque</div></div></div>
+    <div style="margin-top:10px;font-size:13px;color:var(--muted);">🏆 Mais vendido: <b style="color:var(--lime);">${top?esc(top.name)+" ("+top.sold+")":"ninguém ainda"}</b></div></div>`;
+
+  // ALERTAS
+  const al=[];
+  if(saldo<0)al.push(["🔴",`Caixa no vermelho: ${money(saldo)}. Segura a mão nas cordas.`]);
+  if(nx){const diff=Math.ceil((new Date(nx.date)-new Date(today))/86400000);if(diff<=7)al.push(["🤘",`Missão em ${diff===0?"HOJE":diff+" dia(s)"}: ${esc(nx.place||nx.title)}. Ensaiou?`]);}
+  semEstoque.forEach(p=>al.push(["📦",`Produto zerado: ${esc(p.name)}. Bora repor pro próximo show.`]));
+  DB.merch.filter(p=>p.status==="pronto"&&p.stock>0&&p.stock<=p.low).forEach(p=>al.push(["⚠️",`Tá acabando: ${esc(p.name)} (${p.stock} no estoque).`]));
+  if(cai>0)al.push(["🎸",`${cai} música(s) "caindo aos pedaços". Marca ensaio antes que vire vergonha.`]);
+  const emRisco=DB.songs.filter(s=>songFresh(s).risk).length;
+  if(emRisco>0)al.push(["⏳",`${emRisco} música(s) em risco de esquecimento (muito tempo sem tocar). Olha no Repertório.`]);
+  const card5=`<div class="qg-card" style="cursor:default;"><div class="qg-head">🚨 ALERTAS DO QUARTEL</div>
+    ${al.length?al.map(a=>`<div class="alert-item"><span>${a[0]}</span><span>${a[1]}</span></div>`).join(""):'<div style="color:var(--green);font-weight:600;">✅ Tudo sob controle, soldado. Sem pendências.</div>'}</div>`;
+
+  $("#qgBoard").innerHTML=card1+card2+card3+card4+card5;
+}
+
+function renderAll(){renderQG();renderSongs();renderSet();renderAgenda();renderShame();renderRoad();renderShop();}
 load();
 renderAll();
 initSync();
