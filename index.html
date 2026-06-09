@@ -131,6 +131,29 @@
   .palco-bot{display:flex;gap:10px;padding:16px 18px calc(20px + env(safe-area-inset-bottom));}
   .palco-bot button{flex:1;padding:18px;border-radius:12px;font-family:var(--display);font-size:18px;background:#1a1a1a;color:#fff;}
   .palco-bot .nextbtn{background:var(--lime);color:#000;flex:2;}
+  .ensaio{position:fixed;inset:0;background:#0a0807;z-index:600;display:none;flex-direction:column;}
+  .ensaio.open{display:flex;}
+  .ens-top{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);flex:none;}
+  .ens-title{font-family:var(--display);font-size:18px;color:var(--lime);letter-spacing:1px;}
+  .ens-body{flex:1;overflow-y:auto;padding:14px 16px calc(40px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;}
+  .ens-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;}
+  .ens-h{font-family:var(--display);font-size:14px;color:var(--lime);letter-spacing:1px;margin-bottom:10px;}
+  .ens-clock{font-family:var(--display);font-size:50px;text-align:center;color:var(--ink);letter-spacing:2px;}
+  .ens-clock.down{color:var(--yellow);}
+  .ens-row{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:10px;}
+  .ens-row button{background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 14px;font-weight:700;font-size:15px;cursor:pointer;}
+  .ens-row input{background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px;}
+  .ens-row label{font-size:13px;color:var(--muted);}
+  .ens-bigbtn{width:100%;margin-top:12px;background:var(--lime);color:#000;border:none;border-radius:12px;padding:16px;font-family:var(--display);font-size:20px;letter-spacing:1px;cursor:pointer;}
+  .ens-bigbtn.on{background:var(--yellow);}
+  .ens-bigbtn.rec{background:var(--red);color:#fff;}
+  .ens-bigbtn.rec.on{background:#ff1f1f;animation:recpulse 1s infinite;}
+  @keyframes recpulse{50%{opacity:.55;}}
+  .ens-rec{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .ens-songlist{display:flex;flex-direction:column;gap:6px;max-height:230px;overflow-y:auto;}
+  .ens-songbtn{text-align:left;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:11px 12px;cursor:pointer;font-size:14px;}
+  .ens-fala{background:rgba(255,210,30,.12);border-left:4px solid var(--yellow);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:15px;color:#ffe98a;white-space:pre-wrap;}
+  .ens-lyrics{white-space:pre-wrap;font-size:15px;line-height:1.55;color:var(--ink);}
   .bar{height:10px;background:var(--panel-2);border-radius:6px;overflow:hidden;border:1px solid var(--line);margin-top:4px;}
   .bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--lime),var(--lime-deep));transition:width .4s;}
   .qg-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px;cursor:pointer;transition:.12s;}
@@ -166,6 +189,7 @@
   <section class="screen" id="s-rep">
     <div class="screen-title"><span class="dot"></span>Repertório Brutal</div>
     <div class="screen-sub">A lista geral de paulada + a colinha de cada uma.</div>
+    <button class="btn yellow full" style="margin-bottom:12px;" onclick="openEnsaio()">🎵 MODO ENSAIO</button>
     <div class="row between" style="margin-bottom:10px;">
       <div id="songFilters" class="row" style="gap:6px;flex-wrap:wrap;"></div>
       <button class="btn primary sm" onclick="openSong()">+ MÚSICA</button>
@@ -370,6 +394,29 @@
   <div class="palco-bot"><button onclick="palcoPrev()">◀ ANTES</button><button class="nextbtn" onclick="palcoNext()">PRÓXIMA ▶</button></div>
 </div>
 
+<div class="ensaio" id="ensaio">
+  <div class="ens-top"><div class="ens-title">🎵 MODO ENSAIO</div><button class="btn ghost sm" onclick="closeEnsaio()">✕ SAIR</button></div>
+  <div class="ens-body">
+    <div class="ens-card" id="ensSong"></div>
+    <div class="ens-card">
+      <div class="ens-h">⏱ CRONÔMETRO</div>
+      <div class="ens-clock" id="ensTimer">00:00</div>
+      <div class="ens-row"><button onclick="ensTimerStart()">▶ Iniciar</button><button onclick="ensTimerPause()">⏸ Pausar</button><button onclick="ensTimerReset()">⟲ Zerar</button></div>
+      <div class="ens-row"><label>Regressivo (min):</label><input id="ensCountMin" type="number" min="0" value="45" style="width:70px;text-align:center;"><button onclick="ensTimerCountdown()">Setar</button></div>
+    </div>
+    <div class="ens-card">
+      <div class="ens-h">🥁 METRÔNOMO</div>
+      <div class="ens-row"><button onclick="ensBpmAdj(-5)">−5</button><input id="ensBpm" type="number" min="30" max="300" value="120" style="width:100px;font-size:26px;text-align:center;font-family:var(--display);"><button onclick="ensBpmAdj(5)">+5</button></div>
+      <button id="ensMetroBtn" class="ens-bigbtn" onclick="ensMetroToggle()">▶ START</button>
+    </div>
+    <div class="ens-card">
+      <div class="ens-h">🎤 GRAVAÇÃO RÁPIDA</div>
+      <button id="ensRecBtn" class="ens-bigbtn rec" onclick="ensRecToggle()">🎤 Gravar Trecho</button>
+      <div id="ensRecList"></div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()"><div class="modal" id="modalBox"></div></div>
 <div class="toast" id="toast"></div>
 
@@ -457,7 +504,7 @@ function songFresh(s){
 }
 /* ----- ÁUDIO LOCAL (IndexedDB, fica salvo só neste aparelho) ----- */
 let _idb=null,audioSet=new Set(),_player=null;
-function idbOpen(){return new Promise((res,rej)=>{if(_idb)return res(_idb);const r=indexedDB.open("selim_audio",1);r.onupgradeneeded=()=>r.result.createObjectStore("mp3");r.onsuccess=()=>{_idb=r.result;res(_idb);};r.onerror=()=>rej(r.error);});}
+function idbOpen(){return new Promise((res,rej)=>{if(_idb)return res(_idb);const r=indexedDB.open("selim_audio",2);r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains("mp3"))db.createObjectStore("mp3");if(!db.objectStoreNames.contains("rec"))db.createObjectStore("rec");};r.onsuccess=()=>{_idb=r.result;res(_idb);};r.onerror=()=>rej(r.error);});}
 function audioSave(sid,blob){return idbOpen().then(db=>new Promise((res,rej)=>{const tx=db.transaction("mp3","readwrite");tx.objectStore("mp3").put(blob,sid);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);}));}
 function audioGet(sid){return idbOpen().then(db=>new Promise(res=>{const tx=db.transaction("mp3","readonly");const q=tx.objectStore("mp3").get(sid);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null);}));}
 function audioDel(sid){return idbOpen().then(db=>new Promise(res=>{const tx=db.transaction("mp3","readwrite");tx.objectStore("mp3").delete(sid);tx.oncomplete=res;tx.onerror=res;}));}
@@ -619,6 +666,60 @@ function renderPalco(){
   if(nxt){$("#palcoNextLbl").style.display="block";$("#palcoNextLbl").textContent="PRÓXIMA";$("#palcoNext").style.display="block";$("#palcoNext").textContent=nxt.name;}
   else{$("#palcoNextLbl").textContent="🏁 ÚLTIMA — MANDA BALA!";$("#palcoNext").style.display="none";}
 }
+
+/* ----- MODO ENSAIO ----- */
+let ensWakeLock=null,ensSongId=null;
+async function openEnsaio(){$("#ensaio").classList.add("open");ensSongId=null;renderEnsSong();renderRecList();try{if("wakeLock"in navigator)ensWakeLock=await navigator.wakeLock.request("screen");}catch(e){}}
+function closeEnsaio(){ensMetroStop();ensTimerPause();if(ensRecOn)ensRecStop();$("#ensaio").classList.remove("open");try{ensWakeLock&&ensWakeLock.release();}catch(e){}ensWakeLock=null;}
+/* cockpit de música */
+function ensPickSong(sid){const s=DB.songs.find(x=>x.id===sid);if(!s)return;ensSongId=sid;if(s.bpm){const b=parseInt(s.bpm);if(b>=30&&b<=300)$("#ensBpm").value=b;}renderEnsSong();}
+function renderEnsSong(){const el=$("#ensSong");if(!el)return;const s=DB.songs.find(x=>x.id===ensSongId);
+  if(!s){el.innerHTML=`<div class="ens-h">🎸 ESCOLHE A MÚSICA PRA ENSAIAR</div><div class="ens-songlist" id="ensSongList"></div>`;
+    $("#ensSongList").innerHTML=DB.songs.map(x=>`<button class="ens-songbtn" onclick="ensPickSong('${x.id}')">${esc(x.name)}${x.bpm?` <span style="color:var(--muted);">· ${esc(x.bpm)} BPM</span>`:''}</button>`).join("")||'<div style="color:var(--muted);font-size:13px;">Sem músicas no repertório.</div>';
+    return;}
+  el.innerHTML=`<div class="row between"><div class="ens-h" style="margin:0;">🎸 ${esc(s.name)}</div><button class="btn ghost sm" onclick="ensSongId=null;renderEnsSong()">Trocar</button></div>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--lime);margin:6px 0 10px;">${[s.tom&&'Tom '+esc(s.tom),s.bpm&&esc(s.bpm)+' BPM (carregado no metrônomo)',s.singer&&'🎤 '+esc(s.singer)].filter(Boolean).join(' · ')||'sem colinha'}</div>
+    ${s.fala?`<div class="ens-fala">📢 ${esc(s.fala)}</div>`:''}
+    ${s.lyrics?`<div class="ens-lyrics">${esc(s.lyrics)}</div>`:'<div style="color:var(--muted);font-size:13px;">Sem letra cadastrada (coloca no ✏️).</div>'}`;
+}
+/* cronômetro */
+let ensTimerInt=null,ensTimerSec=0,ensTimerMode="up";
+function ensTimerDisplay(){const m=Math.floor(ensTimerSec/60),s=ensTimerSec%60;$("#ensTimer").textContent=`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;$("#ensTimer").classList.toggle("down",ensTimerMode==="down");}
+function ensTimerTick(){if(ensTimerMode==="up")ensTimerSec++;else{ensTimerSec--;if(ensTimerSec<=0){ensTimerSec=0;ensTimerDisplay();ensTimerPause();ensBeep();return;}}ensTimerDisplay();}
+function ensTimerStart(){if(ensTimerInt)return;ensTimerInt=setInterval(ensTimerTick,1000);}
+function ensTimerPause(){clearInterval(ensTimerInt);ensTimerInt=null;}
+function ensTimerReset(){ensTimerPause();ensTimerSec=0;ensTimerMode="up";ensTimerDisplay();}
+function ensTimerCountdown(){const min=+$("#ensCountMin").value||0;if(min<=0){toast("Bota os minutos do ensaio");return;}ensTimerPause();ensTimerMode="down";ensTimerSec=min*60;ensTimerDisplay();ensTimerStart();}
+/* metrônomo (Web Audio, agendado) */
+let ensAudioCtx=null,ensMetroOn=false,ensMetroTimer=null,ensNextNote=0,ensBeat=0;
+function ensCtx(){if(!ensAudioCtx)ensAudioCtx=new (window.AudioContext||window.webkitAudioContext)();return ensAudioCtx;}
+function ensClick(t,accent){const ctx=ensCtx();const o=ctx.createOscillator(),g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.value=accent?1600:1000;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.5,t+.001);g.gain.exponentialRampToValueAtTime(.0001,t+.05);o.start(t);o.stop(t+.06);}
+function ensScheduler(){const ctx=ensCtx();const bpm=Math.min(300,Math.max(30,+$("#ensBpm").value||120));const spb=60/bpm;while(ensNextNote<ctx.currentTime+.12){ensClick(ensNextNote,ensBeat%4===0);ensBeat++;ensNextNote+=spb;}}
+function ensMetroToggle(){ensMetroOn?ensMetroStop():ensMetroStart();}
+function ensMetroStart(){const ctx=ensCtx();if(ctx.state==="suspended")ctx.resume();ensMetroOn=true;ensBeat=0;ensNextNote=ctx.currentTime+.05;ensMetroTimer=setInterval(ensScheduler,25);const b=$("#ensMetroBtn");if(b){b.textContent="⏸ STOP";b.classList.add("on");}}
+function ensMetroStop(){ensMetroOn=false;clearInterval(ensMetroTimer);ensMetroTimer=null;const b=$("#ensMetroBtn");if(b){b.textContent="▶ START";b.classList.remove("on");}}
+function ensBpmAdj(d){const el=$("#ensBpm");el.value=Math.min(300,Math.max(30,(+el.value||120)+d));}
+function ensBeep(){const ctx=ensCtx();if(ctx.state==="suspended")ctx.resume();for(let i=0;i<3;i++)ensClick(ctx.currentTime+i*.22,true);toast("⏰ Acabou o tempo do ensaio!");}
+/* gravação rápida (MediaRecorder -> IndexedDB) */
+let ensRec=null,ensRecChunks=[],ensRecOn=false,ensRecStream=null;
+function ensRecToggle(){ensRecOn?ensRecStop():ensRecStart();}
+function ensRecStart(){if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){toast("Gravação não suportada nesse navegador");return;}
+  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{ensRecStream=stream;ensRecChunks=[];
+    try{ensRec=new MediaRecorder(stream);}catch(e){toast("Gravação não suportada");stream.getTracks().forEach(t=>t.stop());return;}
+    ensRec.ondataavailable=e=>{if(e.data&&e.data.size)ensRecChunks.push(e.data);};
+    ensRec.onstop=()=>{const blob=new Blob(ensRecChunks,{type:(ensRec&&ensRec.mimeType)||"audio/webm"});recSave("rec_"+Date.now(),blob).then(renderRecList);try{ensRecStream.getTracks().forEach(t=>t.stop());}catch(e){}ensRecStream=null;};
+    ensRec.start();ensRecOn=true;const b=$("#ensRecBtn");if(b){b.textContent="⏹ Parar Gravação";b.classList.add("on");}
+  }).catch(()=>toast("Permissão de microfone negada 🎤"));
+}
+function ensRecStop(){if(ensRec&&ensRecOn){try{ensRec.stop();}catch(e){}ensRecOn=false;const b=$("#ensRecBtn");if(b){b.textContent="🎤 Gravar Trecho";b.classList.remove("on");}}}
+function recSave(rid,blob){return idbOpen().then(db=>new Promise((res,rej)=>{const tx=db.transaction("rec","readwrite");tx.objectStore("rec").put({blob,ts:Date.now()},rid);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);}));}
+function recAll(){return idbOpen().then(db=>new Promise(res=>{const tx=db.transaction("rec","readonly");const q=tx.objectStore("rec").openCursor();const out=[];q.onsuccess=e=>{const c=e.target.result;if(c){out.push({id:c.key,blob:c.value.blob,ts:c.value.ts});c.continue();}else res(out);};q.onerror=()=>res([]);}));}
+function recDel(rid){return idbOpen().then(db=>new Promise(res=>{const tx=db.transaction("rec","readwrite");tx.objectStore("rec").delete(rid);tx.oncomplete=res;tx.onerror=res;}));}
+function renderRecList(){recAll().then(list=>{const el=$("#ensRecList");if(!el)return;list.sort((a,b)=>b.ts-a.ts);
+  el.innerHTML=list.length?list.map(r=>{const url=URL.createObjectURL(r.blob);const d=new Date(r.ts);const hh=`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+    return `<div class="ens-rec"><span style="flex:none;">🎙 ${hh}</span><audio controls src="${url}" style="height:34px;flex:1;min-width:0;"></audio><button class="iconbtn" style="flex:none;" onclick="recDel('${r.id}').then(renderRecList)">🗑️</button></div>`;}).join("")
+    :'<div style="color:var(--muted);font-size:13px;margin-top:10px;">Nenhuma gravação ainda. Aperta o botão e manda ver. 🎤</div>';
+});}
 
 /* ============ 3. AGENDA + GLÓRIAS ============ */
 function agTab(t){$$(".ag-pane").forEach(p=>p.style.display="none");$("#ag-"+t).style.display="block";$$("[data-ag]").forEach(b=>b.classList.toggle("on",b.dataset.ag===t));}
