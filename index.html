@@ -176,21 +176,34 @@
   <!-- 2. SETLIST -->
   <section class="screen" id="s-set">
     <div class="screen-title"><span class="dot"></span>Gerador de Quebra-Pau</div>
-    <div class="screen-sub">Monta a ordem, manda no zap e bota no Modo Palco.</div>
-    <div class="saldo-box" style="border-color:var(--lime-deep);">
-      <div class="lbl">Seu show terá</div><div class="val" id="setTotal">0min</div>
-      <div style="font-size:12px;color:var(--lime);letter-spacing:1px;">DE PAULADA · <span id="setCount">0</span> MÚSICAS</div>
+    <div class="screen-sub">Monta vários setlists — um pra cada show.</div>
+
+    <div id="setListView">
+      <button class="btn primary full" style="margin-bottom:12px;" onclick="newSetlist()">+ NOVO SETLIST</button>
+      <div id="setlistCards"></div>
     </div>
-    <div class="row" style="gap:8px;margin-bottom:10px;">
-      <button class="btn wa grow" onclick="shareSetWhats()">📲 ZAP</button>
-      <button class="btn yellow grow" onclick="openPalco()">🎤 MODO PALCO</button>
-      <button class="btn ghost sm" onclick="clearSet()">LIMPAR</button>
+
+    <div id="setEditView" style="display:none;">
+      <button class="btn ghost sm" style="margin-bottom:10px;" onclick="closeSetlistEdit()">◀ TODOS OS SETLISTS</button>
+      <div class="row between" style="margin-bottom:10px;">
+        <div id="setEditName" style="font-family:var(--display);font-size:20px;color:var(--lime);min-width:0;overflow:hidden;text-overflow:ellipsis;"></div>
+        <button class="iconbtn" onclick="renameSetlist(curSetId)" title="Renomear">✏️</button>
+      </div>
+      <div class="saldo-box" style="border-color:var(--lime-deep);">
+        <div class="lbl">Esse show terá</div><div class="val" id="setTotal">0min</div>
+        <div style="font-size:12px;color:var(--lime);letter-spacing:1px;">DE PAULADA · <span id="setCount">0</span> MÚSICAS</div>
+      </div>
+      <div class="row" style="gap:8px;margin-bottom:10px;">
+        <button class="btn wa grow" onclick="shareSetWhats()">📲 ZAP</button>
+        <button class="btn yellow grow" onclick="openPalco()">🎤 MODO PALCO</button>
+        <button class="btn ghost sm" onclick="clearSet()">LIMPAR</button>
+      </div>
+      <button class="btn ghost full sm" style="margin-bottom:12px;" onclick="markSetlistPlayed()">✅ Marcar este setlist como TOCADO HOJE</button>
+      <div id="setBuilder"></div>
+      <div class="divider"></div>
+      <div class="screen-sub" style="margin-bottom:8px;">CLICA PRA ADICIONAR NO SETLIST 👇</div>
+      <div id="setPool"></div>
     </div>
-    <button class="btn ghost full sm" style="margin-bottom:12px;" onclick="markSetlistPlayed()">✅ Marcar este setlist como TOCADO HOJE</button>
-    <div id="setBuilder"></div>
-    <div class="divider"></div>
-    <div class="screen-sub" style="margin-bottom:8px;">CLICA PRA ADICIONAR NO SETLIST 👇</div>
-    <div id="setPool"></div>
   </section>
 
   <!-- 3. AGENDA -->
@@ -349,6 +362,7 @@
   <div class="palco-mid" onclick="palcoNext()">
     <div class="palco-cur" id="palcoCur">—</div>
     <div class="palco-meta" id="palcoMeta"></div>
+    <div id="palcoFala" style="display:none;text-align:left;background:rgba(255,210,30,.12);border:1px solid var(--yellow);border-left:5px solid var(--yellow);border-radius:10px;padding:12px 14px;margin:14px 0;font-size:17px;line-height:1.45;color:#ffe98a;white-space:pre-wrap;"></div>
     <div class="palco-note" id="palcoNote"></div>
     <div class="palco-next" id="palcoNextLbl">PRÓXIMA</div>
     <div class="palco-nextname" id="palcoNext">—</div>
@@ -376,7 +390,7 @@ function makeSeed(){
     _sv:2,
     songs:RAW_SONGS.map(([n,d])=>({id:id(),name:n,dur:d,status:"yellow",tags:[],tom:"",bpm:"",singer:"",link:"",notes:"",lastPlayed:"",plays:0})),
     members:[{id:id(),name:"Vocal/Guitarra",role:"Frente"},{id:id(),name:"Guitarra Base",role:"Solo"},{id:id(),name:"Baixo",role:"Grave"},{id:id(),name:"Bateria",role:"Pancadaria"}],
-    setlist:[], shame:{}, shameLog:[],
+    setlist:[], setlists:[], shame:{}, shameLog:[],
     excuses:["Dormi demais","A patroa travou a porta","Esqueci a palheta/cabo","Tava no busão","O pneu furou","Esqueci que tinha ensaio"],
     equipment:{},
     rider:"=== RIDER TÉCNICO SELIM (cover Raimundos) ===\n\nFORMAÇÃO: 2 guitarras, baixo, bateria, 1 voz principal + backing.\n\nCANAIS DE SOM:\n01 - Bumbo\n02 - Caixa\n03 - Tom 1\n04 - Tom 2 / Surdo\n05 - Overhead L\n06 - Overhead R\n07 - Baixo (DI)\n08 - Guita 1 (mic no amp)\n09 - Guita 2 (mic no amp)\n10 - Voz principal\n11 - Backing vocal\n\nMONITORES: mínimo 3 vias.\nPALCO MÍNIMO: 4m x 3m.\nENERGIA: 4 tomadas aterradas perto da bateria.",
@@ -405,7 +419,8 @@ function load(){
 }
 function backfill(){ const s=makeSeed(); for(const k in s){ if(DB[k]===undefined) DB[k]=structuredClone(s[k]); }
   // garante campos novos das músicas
-  (DB.songs||[]).forEach(sg=>{["tom","bpm","singer","link","notes","lyrics"].forEach(f=>{if(sg[f]===undefined)sg[f]="";});if(!sg.tags)sg.tags=[];if(sg.lastPlayed===undefined)sg.lastPlayed="";if(sg.plays===undefined)sg.plays=0;});
+  (DB.songs||[]).forEach(sg=>{["tom","bpm","singer","link","notes","lyrics","fala"].forEach(f=>{if(sg[f]===undefined)sg[f]="";});if(!sg.tags)sg.tags=[];if(sg.lastPlayed===undefined)sg.lastPlayed="";if(sg.plays===undefined)sg.plays=0;});
+  if(!Array.isArray(DB.setlists)){DB.setlists=[];if((DB.setlist||[]).length)DB.setlists.push({id:id(),name:"Meu Setlist",songs:[...DB.setlist],notes:"",ts:Date.now()});}
   (DB.gigs||[]).forEach(g=>{if(g.city===undefined)g.city="";if(!g.participants)g.participants=[];if(!g.perMember)g.perMember={};});
   (DB.events||[]).forEach(e=>{if(!e.rsvp)e.rsvp={};});
   if(!DB.racha)DB.racha={cachet:0,expenses:[],who:[],bandMode:"none",bandFixed:0};
@@ -458,6 +473,7 @@ function openPlayer(sid){const s=DB.songs.find(x=>x.id===sid);if(!s)return;audio
     ${s.lyrics?`<div style="border-top:1px dashed var(--line);padding-top:10px;"><div style="font-family:var(--display);color:var(--lime);font-size:13px;margin-bottom:8px;">📄 LETRA</div><div style="white-space:pre-wrap;font-size:14px;line-height:1.55;">${esc(s.lyrics)}</div></div>`:'<div style="color:var(--muted);font-size:13px;">Sem letra cadastrada (coloca pelo ✏️).</div>'}`);
 });}
 function openLyrics(sid){const s=DB.songs.find(x=>x.id===sid);if(!s)return;showModal(`<h3>📄 ${esc(s.name)}</h3>${s.lyrics?`<div style="white-space:pre-wrap;font-size:14px;line-height:1.55;">${esc(s.lyrics)}</div>`:'<div style="color:var(--muted);">Sem letra cadastrada.</div>'}`);}
+function openFala(sid){const s=DB.songs.find(x=>x.id===sid);if(!s||!s.fala)return;showModal(`<h3>📢 ${esc(s.name)}</h3><div style="font-family:var(--display);color:var(--yellow);font-size:13px;margin-bottom:8px;letter-spacing:1px;">FALA / TRANSIÇÃO DO VOCALISTA</div><div style="white-space:pre-wrap;font-size:15px;line-height:1.55;background:rgba(255,210,30,.08);border-left:3px solid var(--yellow);padding:12px;border-radius:8px;">${esc(s.fala)}</div>`);}
 function renderSongs(){
   const el=$("#songList");
   // chips de filtro por status
@@ -479,7 +495,7 @@ function renderSongs(){
     const f=songFresh(sg);const hasAudio=audioSet.has(sg.id);
     return `<div class="card">
       <div class="row between"><div class="grow">
-        <div style="font-family:var(--display);font-size:19px;letter-spacing:.5px;">${esc(sg.name)}</div>
+        <div style="font-family:var(--display);font-size:19px;letter-spacing:.5px;">${esc(sg.name)}${sg.fala?` <span onclick="event.stopPropagation();openFala('${sg.id}')" title="Fala / transição" style="cursor:pointer;font-size:15px;">📢</span>`:''}</div>
         <div style="color:var(--muted);font-size:13px;font-family:var(--mono);margin-top:2px;">⏱ ${fmtTime(sg.dur)}${cola?' · '+cola:''}</div>
       </div><div class="row" style="gap:6px;">
         ${hasAudio?`<button class="iconbtn" onclick="openPlayer('${sg.id}')" title="Tocar MP3 + letra" style="border-color:var(--lime);">▶️</button>`:(sg.lyrics?`<button class="iconbtn" onclick="openLyrics('${sg.id}')" title="Ver letra">📄</button>`:'')}
@@ -494,7 +510,7 @@ function renderSongs(){
   el.innerHTML=riscoCard+(lista.length?cards:'<div class="empty">Nenhuma música nesse filtro 🤷</div>');
 }
 function openSong(sid){
-  const sg=sid?DB.songs.find(x=>x.id===sid):{name:"",dur:180,status:"yellow",tags:[],tom:"",bpm:"",singer:"",link:"",notes:"",lyrics:"",lastPlayed:"",plays:0};
+  const sg=sid?DB.songs.find(x=>x.id===sid):{name:"",dur:180,status:"yellow",tags:[],tom:"",bpm:"",singer:"",link:"",notes:"",lyrics:"",fala:"",lastPlayed:"",plays:0};
   const mins=Math.floor(sg.dur/60),secs=sg.dur%60;
   const statusBtns=Object.entries(STATUS).map(([k,v])=>`<button class="chip ${sg.status===k?'sel':''}" data-stt="${k}" onclick="pickStatus('${k}')">${v.emoji} ${v.label}</button>`).join("");
   const tagChips=ALLTAGS.map(t=>`<button class="chip ${(sg.tags||[]).includes(t)?'sel':''}" data-tg="${esc(t)}" onclick="this.classList.toggle('sel')">${esc(t)}</button>`).join("");
@@ -507,6 +523,7 @@ function openSong(sid){
     <div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Tom</label><input id="m_tom" value="${esc(sg.tom)}" placeholder="Ex: E"></div><div class="field grow"><label class="fld">BPM</label><input id="m_bpm" value="${esc(sg.bpm)}" placeholder="Ex: 168"></div></div>
     <div class="field"><label class="fld">Quem canta</label><input id="m_singer" value="${esc(sg.singer)}" placeholder="Ex: Zé / todos no refrão"></div>
     <div class="field"><label class="fld">Anotação (entrada, solo, etc)</label><input id="m_notes" value="${esc(sg.notes)}" placeholder="Ex: entra na contagem, solo dobrado"></div>
+    <div class="field"><label class="fld">📢 Fala / Transição do Vocalista</label><textarea id="m_fala" rows="3" placeholder="Ex: 'Fala pro público que essa é pesada...', 'Conta a história da música', 'Pede aplauso pro batera', 'Transição engraçada...'">${esc(sg.fala||"")}</textarea></div>
     <div class="field"><label class="fld">Letra da música</label><textarea id="m_lyrics" rows="5" placeholder="Cola a letra aqui pra ler no palco...">${esc(sg.lyrics||"")}</textarea></div>
     <div class="field"><label class="fld">Link externo (cifra / vídeo) — opcional</label><input id="m_link" value="${esc(sg.link)}" placeholder="https://..."></div>
     <div style="border-top:1px dashed var(--line);padding-top:12px;margin-bottom:6px;font-family:var(--display);font-size:14px;color:var(--lime);">🎧 ÁUDIO MP3</div>
@@ -525,55 +542,81 @@ function saveSong(sid){
   const data={name,dur:(+$("#m_min").value||0)*60+(+$("#m_sec").value||0),status:$("#modalBox").dataset.status,
     tags:$$(".modal .chip.sel[data-tg]").map(c=>c.dataset.tg),tom:$("#m_tom").value.trim(),bpm:$("#m_bpm").value.trim(),
     singer:$("#m_singer").value.trim(),link:$("#m_link").value.trim(),notes:$("#m_notes").value.trim(),
-    lyrics:$("#m_lyrics").value.trim(),lastPlayed:$("#m_last").value||""};
+    lyrics:$("#m_lyrics").value.trim(),fala:$("#m_fala").value.trim(),lastPlayed:$("#m_last").value||""};
   if(sid)Object.assign(DB.songs.find(x=>x.id===sid),data);else DB.songs.push({id:id(),...data,plays:0});
   closeModal();save();toast("Música salva 🤘");
 }
-function delSong(sid){if(!confirm("Tirar essa do repertório?"))return;DB.songs=DB.songs.filter(x=>x.id!==sid);DB.setlist=DB.setlist.filter(x=>x!==sid);audioDel(sid).then(()=>refreshAudioSet());save();}
+function delSong(sid){if(!confirm("Tirar essa do repertório?"))return;DB.songs=DB.songs.filter(x=>x.id!==sid);(DB.setlists||[]).forEach(sl=>{sl.songs=sl.songs.filter(x=>x!==sid);});DB.setlist=(DB.setlist||[]).filter(x=>x!==sid);audioDel(sid).then(()=>refreshAudioSet());save();}
 
 /* ============ 2. SETLIST ============ */
-function setTotalSec(){return DB.setlist.reduce((a,sid)=>{const s=DB.songs.find(x=>x.id===sid);return a+(s?s.dur:0);},0);}
+let curSetId=null;
+function curSet(){return DB.setlists.find(x=>x.id===curSetId)||null;}
+function setTotalSec(s){return (s?s.songs:[]).reduce((a,sid)=>{const x=DB.songs.find(y=>y.id===sid);return a+(x?x.dur:0);},0);}
 function renderSet(){
-  $("#setTotal").textContent=DB.setlist.length?fmtLong(setTotalSec()):"0min";$("#setCount").textContent=DB.setlist.length;
-  const b=$("#setBuilder");
-  b.innerHTML=DB.setlist.length?DB.setlist.map((sid,i)=>{const s=DB.songs.find(x=>x.id===sid);if(!s)return"";const st=STATUS[s.status];
+  const lv=$("#setListView"),ev=$("#setEditView");if(!lv||!ev)return;
+  const cur=curSet();
+  if(!cur){
+    lv.style.display="block";ev.style.display="none";
+    $("#setlistCards").innerHTML=DB.setlists.length?DB.setlists.map(s=>{const n=s.songs.length;
+      return `<div class="card"><div class="row between"><div class="grow" onclick="openSetlistEdit('${s.id}')" style="cursor:pointer;min-width:0;">
+        <div style="font-family:var(--display);font-size:18px;color:var(--lime);">${esc(s.name)}</div>
+        <div style="font-size:12px;color:var(--muted);font-family:var(--mono);">${n} música(s) · ${n?fmtLong(setTotalSec(s)):'0min'}</div></div>
+        <div class="row" style="gap:6px;"><button class="iconbtn" onclick="dupSetlist('${s.id}')" title="Duplicar">⧉</button><button class="iconbtn" onclick="delSetlist('${s.id}')" title="Apagar">🗑️</button></div></div>
+        <button class="btn primary full sm" style="margin-top:10px;" onclick="openSetlistEdit('${s.id}')">ABRIR / EDITAR</button></div>`;
+    }).join(""):'<div class="empty"><div class="big">NENHUM SETLIST</div>Cria o primeiro pro próximo show 🤘</div>';
+    return;
+  }
+  lv.style.display="none";ev.style.display="block";
+  $("#setEditName").textContent=cur.name;
+  $("#setTotal").textContent=cur.songs.length?fmtLong(setTotalSec(cur)):"0min";$("#setCount").textContent=cur.songs.length;
+  $("#setBuilder").innerHTML=cur.songs.length?cur.songs.map((sid,i)=>{const s=DB.songs.find(x=>x.id===sid);if(!s)return"";const st=STATUS[s.status];
     return `<div class="card" style="padding:10px 12px;"><div class="row between"><div class="row grow" style="gap:10px;min-width:0;">
       <div style="font-family:var(--display);font-size:20px;color:var(--lime);width:26px;flex:none;">${i+1}</div>
-      <div class="grow" style="min-width:0;"><div style="font-family:var(--display);font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(s.name)}</div>
+      <div class="grow" style="min-width:0;"><div style="font-family:var(--display);font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(s.name)}${s.fala?' 📢':''}</div>
       <div style="font-size:11px;color:var(--muted);font-family:var(--mono);">${st.emoji} ${fmtTime(s.dur)}${s.tom?' · '+esc(s.tom):''}</div></div></div>
       <div class="row" style="gap:4px;"><button class="iconbtn" onclick="moveSet(${i},-1)">▲</button><button class="iconbtn" onclick="moveSet(${i},1)">▼</button><button class="iconbtn" onclick="fromSet(${i})">✕</button></div>
     </div></div>`;}).join(""):'<div class="empty">Setlist vazio. Escolhe embaixo 👇</div>';
-  $("#setPool").innerHTML=DB.songs.map(s=>{const inSet=DB.setlist.includes(s.id);const st=STATUS[s.status];
+  $("#setPool").innerHTML=DB.songs.map(s=>{const inSet=cur.songs.includes(s.id);const st=STATUS[s.status];
     return `<div class="card" style="padding:10px 12px;opacity:${inSet?.4:1};" onclick="${inSet?'':`toSet('${s.id}')`}"><div class="row between">
       <div class="row grow" style="gap:8px;"><span>${st.emoji}</span><span style="font-weight:600;">${esc(s.name)}</span><span style="color:var(--muted);font-family:var(--mono);font-size:12px;">${fmtTime(s.dur)}</span></div>
       <span style="color:var(--lime);font-weight:700;">${inSet?"✓ no set":"+ add"}</span></div></div>`;}).join("");
 }
-function toSet(sid){if(!DB.setlist.includes(sid)){DB.setlist.push(sid);save();}}
-function fromSet(i){DB.setlist.splice(i,1);save();}
-function moveSet(i,d){const j=i+d;if(j<0||j>=DB.setlist.length)return;[DB.setlist[i],DB.setlist[j]]=[DB.setlist[j],DB.setlist[i]];save();}
-function clearSet(){if(DB.setlist.length&&confirm("Limpar o setlist?")){DB.setlist=[];save();}}
-function markSetlistPlayed(){if(!DB.setlist.length){toast("Setlist vazio!");return;}if(!confirm(`Marcar as ${DB.setlist.length} músicas do setlist como tocadas hoje?`))return;const t=daysFromNow(0);DB.setlist.forEach(sid=>{const s=DB.songs.find(x=>x.id===sid);if(s){s.lastPlayed=t;s.plays=(s.plays||0)+1;}});save();toast("Setlist marcado como tocado 🎵");}
-function setText(){let t="🤘 SETLIST SELIM 🤘\n(cover dos Raimundos)\n\n";DB.setlist.forEach((sid,i)=>{const s=DB.songs.find(x=>x.id===sid);if(s){const tg=(s.tags||[]).length?"  ["+s.tags.join(" / ")+"]":"";t+=`${i+1}. ${s.name} (${fmtTime(s.dur)})${tg}\n`;}});t+=`\n⏱ DURAÇÃO: ${fmtLong(setTotalSec())} de paulada\n🎸 ${DB.setlist.length} músicas\n\nSE NÃO TÁ NA PONTA DO DEDO, CABA NÃO CUCA!`;return t;}
-function shareSetWhats(){if(!DB.setlist.length){toast("Setlist vazio!");return;}const txt=setText();navigator.clipboard?.writeText(txt).catch(()=>{});window.open("https://wa.me/?text="+encodeURIComponent(txt),"_blank");toast("Copiado + abrindo WhatsApp");}
+function newSetlist(){showModal(`<h3>Novo Setlist</h3><div class="field"><label class="fld">Nome (ex: Show Bar Tupã)</label><input id="sl_name" placeholder="Nome do show / ocasião"></div><button class="btn primary full" onclick="createSetlist()">CRIAR</button>`);setTimeout(()=>{try{$("#sl_name").focus();}catch(e){}},120);}
+function createSetlist(){const name=$("#sl_name").value.trim()||"Setlist sem nome";const ns={id:id(),name,songs:[],notes:"",ts:Date.now()};DB.setlists.push(ns);curSetId=ns.id;closeModal();save();toast("Setlist criado 🤘");}
+function openSetlistEdit(sid){curSetId=sid;renderSet();try{window.scrollTo(0,0);}catch(e){}}
+function closeSetlistEdit(){curSetId=null;renderSet();}
+function renameSetlist(sid){const s=DB.setlists.find(x=>x.id===sid);if(!s)return;showModal(`<h3>Renomear Setlist</h3><div class="field"><label class="fld">Nome</label><input id="sl_rename" value="${esc(s.name)}"></div><button class="btn primary full" onclick="doRename('${sid}')">SALVAR</button>`);}
+function doRename(sid){const s=DB.setlists.find(x=>x.id===sid);if(!s)return;s.name=$("#sl_rename").value.trim()||s.name;closeModal();save();}
+function dupSetlist(sid){const s=DB.setlists.find(x=>x.id===sid);if(!s)return;DB.setlists.push({id:id(),name:s.name+" (cópia)",songs:[...s.songs],notes:s.notes||"",ts:Date.now()});save();toast("Setlist duplicado ⧉");}
+function delSetlist(sid){const s=DB.setlists.find(x=>x.id===sid);if(!s)return;if(!confirm(`Apagar o setlist "${s.name}"?`))return;DB.setlists=DB.setlists.filter(x=>x.id!==sid);if(curSetId===sid)curSetId=null;save();}
+function toSet(sid){const c=curSet();if(c&&!c.songs.includes(sid)){c.songs.push(sid);save();}}
+function fromSet(i){const c=curSet();if(c){c.songs.splice(i,1);save();}}
+function moveSet(i,d){const c=curSet();if(!c)return;const j=i+d;if(j<0||j>=c.songs.length)return;[c.songs[i],c.songs[j]]=[c.songs[j],c.songs[i]];save();}
+function clearSet(){const c=curSet();if(c&&c.songs.length&&confirm("Limpar as músicas deste setlist?")){c.songs=[];save();}}
+function markSetlistPlayed(){const c=curSet();if(!c||!c.songs.length){toast("Setlist vazio!");return;}if(!confirm(`Marcar as ${c.songs.length} músicas como tocadas hoje?`))return;const t=daysFromNow(0);c.songs.forEach(sid=>{const s=DB.songs.find(x=>x.id===sid);if(s){s.lastPlayed=t;s.plays=(s.plays||0)+1;}});save();toast("Setlist marcado como tocado 🎵");}
+function setText(){const c=curSet();if(!c)return"";let t=`🤘 SETLIST: ${c.name.toUpperCase()} 🤘\n(SELIM · cover dos Raimundos)\n\n`;c.songs.forEach((sid,i)=>{const s=DB.songs.find(x=>x.id===sid);if(s){const tg=(s.tags||[]).length?"  ["+s.tags.join(" / ")+"]":"";t+=`${i+1}. ${s.name} (${fmtTime(s.dur)})${tg}\n`;}});t+=`\n⏱ DURAÇÃO: ${fmtLong(setTotalSec(c))} de paulada\n🎸 ${c.songs.length} músicas\n\nBORA METER BRONCA! 🤘`;return t;}
+function shareSetWhats(){const c=curSet();if(!c||!c.songs.length){toast("Setlist vazio!");return;}const txt=setText();navigator.clipboard?.writeText(txt).catch(()=>{});window.open("https://wa.me/?text="+encodeURIComponent(txt),"_blank");toast("Copiado + abrindo WhatsApp");}
 
 /* ----- MODO PALCO ----- */
 let palcoIdx=0,wakeLock=null;
 async function openPalco(){
-  if(!DB.setlist.length){toast("Monta o setlist primeiro!");return;}
+  const c=curSet();if(!c||!c.songs.length){toast("Monta o setlist primeiro!");return;}
   palcoIdx=0;$("#palco").classList.add("open");renderPalco();
   try{if("wakeLock"in navigator)wakeLock=await navigator.wakeLock.request("screen");}catch(e){}
 }
 function closePalco(){$("#palco").classList.remove("open");try{wakeLock&&wakeLock.release();}catch(e){}wakeLock=null;}
-function palcoNext(){if(palcoIdx<DB.setlist.length-1){palcoIdx++;renderPalco();}}
+function palcoNext(){const c=curSet();if(c&&palcoIdx<c.songs.length-1){palcoIdx++;renderPalco();}}
 function palcoPrev(){if(palcoIdx>0){palcoIdx--;renderPalco();}}
 function renderPalco(){
-  const cur=DB.songs.find(x=>x.id===DB.setlist[palcoIdx]);
-  const nxt=DB.songs.find(x=>x.id===DB.setlist[palcoIdx+1]);
-  $("#palcoPg").textContent=`${palcoIdx+1} / ${DB.setlist.length}`;
+  const c=curSet();if(!c)return;
+  const cur=DB.songs.find(x=>x.id===c.songs[palcoIdx]);
+  const nxt=DB.songs.find(x=>x.id===c.songs[palcoIdx+1]);
+  $("#palcoPg").textContent=`${palcoIdx+1} / ${c.songs.length}`;
   $("#palcoCur").textContent=cur?cur.name:"—";
   $("#palcoMeta").textContent=cur?[cur.tom&&("Tom "+cur.tom),cur.bpm&&(cur.bpm+" BPM"),fmtTime(cur.dur),cur.singer&&("🎤 "+cur.singer)].filter(Boolean).join("   ·   "):"";
+  const fEl=$("#palcoFala");if(cur&&cur.fala){fEl.style.display="block";fEl.textContent="📢 "+cur.fala;}else fEl.style.display="none";
   $("#palcoNote").textContent=cur&&cur.notes?("📌 "+cur.notes):"";
-  if(nxt){$("#palcoNextLbl").style.display="block";$("#palcoNext").style.display="block";$("#palcoNext").textContent=nxt.name;}
+  if(nxt){$("#palcoNextLbl").style.display="block";$("#palcoNextLbl").textContent="PRÓXIMA";$("#palcoNext").style.display="block";$("#palcoNext").textContent=nxt.name;}
   else{$("#palcoNextLbl").textContent="🏁 ÚLTIMA — MANDA BALA!";$("#palcoNext").style.display="none";}
 }
 
