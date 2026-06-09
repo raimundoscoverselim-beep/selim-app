@@ -264,23 +264,15 @@
   <!-- 5. ESTRADA -->
   <section class="screen" id="s-road">
     <div class="screen-title"><span class="dot"></span>Kit de Estrada</div>
-    <div class="screen-sub">Logística, rider, vias sacras e os compadres.</div>
+    <div class="screen-sub">Logística, vias sacras e os compadres.</div>
     <div class="seg" id="roadSeg">
       <button class="on" data-rt="check" onclick="roadTab('check')">CHECKLIST</button>
-      <button data-rt="rider" onclick="roadTab('rider')">RIDER</button>
       <button data-rt="vias" onclick="roadTab('vias')">VIAS</button>
       <button data-rt="contatos" onclick="roadTab('contatos')">COMPADRES</button>
     </div>
     <div id="road-check" class="road-pane">
       <div class="screen-sub" style="margin-bottom:8px;">O que NÃO esquecer. Por integrante.</div>
       <div id="checklistArea"></div>
-    </div>
-    <div id="road-rider" class="road-pane" style="display:none;">
-      <div class="card">
-        <div class="row between"><h3 style="font-size:16px;">🎚️ Rider de Bolso</h3><button class="btn wa sm" onclick="copyRider()">COPIAR</button></div>
-        <div class="screen-sub" style="margin:6px 0 10px;">Mapa de palco e canais. Manda pro contratante.</div>
-        <textarea id="riderText" rows="14" class="mono" oninput="DB.rider=this.value;saveQuiet()"></textarea>
-      </div>
     </div>
     <div id="road-vias" class="road-pane" style="display:none;">
       <div class="row between" style="margin-bottom:10px;"><div class="screen-sub" style="margin:0;">Motoclubes e bares em negociação.</div><button class="btn primary sm" onclick="openVenue()">+ VIA</button></div>
@@ -440,6 +432,7 @@ function closeModal(){const a=$("#modalBox audio");if(a){try{a.pause();}catch(e)
 /* ============ 1. REPERTORIO + COLINHA ============ */
 let songFilter="all";
 function setSongFilter(f){songFilter=f;renderSongs();}
+function goRepFilter(f){songFilter=f;go('rep');renderSongs();}
 function songFresh(s){
   if(!s.lastPlayed)return{txt:"sem registro",col:"var(--muted)",risk:false,never:true};
   const d=Math.floor((new Date(daysFromNow(0))-new Date(s.lastPlayed))/86400000);
@@ -724,13 +717,26 @@ function openFineRule(){showModal(`<h3>Novo Tipo de Multa</h3><div class="field"
 function saveFineRule(){const label=$("#fr_label").value.trim();const amount=+$("#fr_amt").value;if(!label||!amount){toast("Preenche tudo!");return;}DB.fineRules.push({id:id(),label,amount});closeModal();save();}
 
 /* ============ 5. ESTRADA ============ */
+const COMMON_GEAR=["Cabo P10","Fonte","Multicabo","Extensão","Palhetas","Baquetas","Pedais","Afinador","Fita crepe","Carregador"];
 function roadTab(t){$$(".road-pane").forEach(p=>p.style.display="none");$("#road-"+t).style.display="block";$$("#roadSeg button").forEach(b=>b.classList.toggle("on",b.dataset.rt===t));}
 function renderRoad(){
-  $("#checklistArea").innerHTML=DB.members.map(m=>{const items=DB.equipment[m.id]||[];
-    const list=items.map((it,i)=>`<div class="row" style="gap:10px;padding:7px 0;"><div class="check ${it.checked?'on':''}" onclick="toggleEq('${m.id}',${i})">✓</div><div class="grow ${it.checked?'strike':''}">${esc(it.item)}</div><button class="iconbtn" onclick="delEq('${m.id}',${i})" style="width:28px;height:28px;">✕</button></div>`).join("")||'<div style="color:var(--muted);font-size:13px;padding:4px 0;">Nada na lista.</div>';
-    return `<div class="card"><h3 style="font-size:16px;margin-bottom:6px;">🎒 ${esc(m.name)}</h3>${list}<div class="row" style="gap:8px;margin-top:8px;"><input id="eq_${m.id}" placeholder="Pedaleira, cabo P10..." onkeydown="if(event.key==='Enter')addEq('${m.id}')"><button class="btn primary sm" onclick="addEq('${m.id}')">+</button></div></div>`;
+  const allItems=DB.members.flatMap(m=>DB.equipment[m.id]||[]);
+  const totN=allItems.length,okN=allItems.filter(it=>it.checked).length,pct=totN?Math.round(okN/totN*100):0;
+  const full=totN>0&&pct===100;
+  const head=`<div class="card" style="border-color:${full?'var(--green)':'var(--lime-deep)'};">
+    <div class="row between"><div class="qg-head" style="margin:0;">🚐 PRONTIDÃO PRA ESTRADA</div>${totN?`<button class="btn ghost sm" onclick="clearAllEq()">DESMARCAR TUDO</button>`:''}</div>
+    <div class="row between" style="margin-top:6px;"><div style="font-family:var(--display);font-size:24px;color:${full?'var(--green)':'var(--lime)'};">${totN?pct+'%':'—'}</div><div style="font-size:12px;color:var(--muted);">${okN}/${totN} itens carregados</div></div>
+    <div class="bar"><i style="width:${pct}%;"></i></div>
+    ${totN?(full?'<div style="margin-top:8px;font-size:12px;color:var(--green);">✅ Tudo no bagageiro, bora pro show! 🤘</div>':`<div style="margin-top:8px;font-size:12px;color:var(--amber);">⚠️ Faltam ${totN-okN} item(ns). Confere antes de pegar a estrada!</div>`):'<div style="margin-top:8px;font-size:12px;color:var(--muted);">Monta a lista de cada um embaixo 👇</div>'}
+  </div>`;
+  const members=DB.members.map(m=>{const items=DB.equipment[m.id]||[];const mOk=items.filter(it=>it.checked).length;
+    const list=items.map((it,i)=>`<div class="row" style="gap:10px;padding:7px 0;"><div class="check ${it.checked?'on':''}" onclick="toggleEq('${m.id}',${i})">✓</div><div class="grow ${it.checked?'strike':''}">${esc(it.item)}</div><button class="iconbtn" onclick="delEq('${m.id}',${i})" style="width:28px;height:28px;">✕</button></div>`).join("")||'<div style="color:var(--muted);font-size:13px;padding:4px 0;">Nada na lista ainda.</div>';
+    const gear=COMMON_GEAR.map(g=>`<button class="chip" onclick="addEqItem('${m.id}','${g}')">+ ${g}</button>`).join("");
+    return `<div class="card"><div class="row between" style="margin-bottom:6px;"><h3 style="font-size:16px;">🎒 ${esc(m.name)}</h3><span style="font-size:12px;color:${items.length&&mOk===items.length?'var(--green)':'var(--muted)'};font-family:var(--mono);">${mOk}/${items.length}</span></div>${list}
+      <div class="row" style="gap:8px;margin-top:8px;"><input id="eq_${m.id}" placeholder="Outro item..." onkeydown="if(event.key==='Enter')addEq('${m.id}')"><button class="btn primary sm" onclick="addEq('${m.id}')">+</button></div>
+      <div class="chip-row" style="margin-top:8px;gap:5px;flex-wrap:wrap;">${gear}</div></div>`;
   }).join("")||'<div class="empty">Adicione integrantes no Tribunal.</div>';
-  if($("#riderText"))$("#riderText").value=DB.rider;
+  $("#checklistArea").innerHTML=head+members;
   $("#venueList").innerHTML=DB.venues.length?DB.venues.map(v=>{const cls=v.status==="Confirmado"?"green":v.status==="Furou"?"red":v.status==="Negociando"?"yellow":"";
     return `<div class="card"><div class="row between"><div class="grow"><div style="font-family:var(--display);font-size:17px;">${esc(v.name)}</div><div style="font-size:11px;color:var(--muted);">${esc(v.type)}</div></div><div class="row" style="gap:6px;"><button class="iconbtn" onclick="openVenue('${v.id}')">✏️</button><button class="iconbtn" onclick="delVenue('${v.id}')">🗑️</button></div></div><div style="margin:8px 0;"><span class="pill ${cls}">${esc(v.status)}</span></div>${v.notes?`<div style="font-size:13px;color:var(--muted);">${esc(v.notes)}</div>`:""}</div>`;}).join(""):'<div class="empty">Nenhuma negociação.</div>';
   $("#contactList").innerHTML=DB.contacts.length?DB.contacts.map(c=>{
@@ -743,6 +749,8 @@ function renderRoad(){
 }
 const stars=n=>{n=+n||0;return '<span class="stars">'+[1,2,3,4,5].map(i=>`<span class="${i<=n?'f':''}">★</span>`).join("")+'</span>';};
 function addEq(mid){const inp=$("#eq_"+mid);const val=inp.value.trim();if(!val)return;(DB.equipment[mid]=DB.equipment[mid]||[]).push({item:val,checked:false});inp.value="";save();}
+function addEqItem(mid,item){const arr=(DB.equipment[mid]=DB.equipment[mid]||[]);if(arr.some(x=>(x.item||"").toLowerCase()===item.toLowerCase())){toast(item+" já tá na lista");return;}arr.push({item,checked:false});save();}
+function clearAllEq(){if(!confirm("Desmarcar TODOS os itens? (pra começar a conferência do show do zero)"))return;DB.members.forEach(m=>(DB.equipment[m.id]||[]).forEach(it=>it.checked=false));save();toast("Tudo desmarcado, bora conferir 🎒");}
 function toggleEq(mid,i){DB.equipment[mid][i].checked=!DB.equipment[mid][i].checked;save();}
 function delEq(mid,i){DB.equipment[mid].splice(i,1);save();}
 function copyRider(){navigator.clipboard?.writeText($("#riderText").value).then(()=>toast("Rider copiado!"));}
@@ -935,7 +943,7 @@ function renderQG(){
   const card2=`<div class="qg-card" onclick="go('rep')"><div class="qg-head">🎸 REPERTÓRIO</div>
     <div class="row between"><div class="qg-big">${tot}</div><div style="color:var(--muted);font-size:12px;">${pct}% na ponta do dedo</div></div>
     <div class="bar"><i style="width:${pct}%;"></i></div>
-    <div class="qg-grid" style="margin-top:10px;"><div class="qg-mini"><div class="n" style="color:var(--green);">${pron}</div><div class="l">🟢 Prontas</div></div><div class="qg-mini"><div class="n" style="color:var(--yellow);">${cai}</div><div class="l">🟡 Caindo</div></div><div class="qg-mini"><div class="n" style="color:var(--red);">${tira}</div><div class="l">🔴 Tira</div></div></div></div>`;
+    <div class="qg-grid" style="margin-top:10px;"><div class="qg-mini" style="cursor:pointer;" onclick="event.stopPropagation();goRepFilter('green')"><div class="n" style="color:var(--green);">${pron}</div><div class="l">🟢 Prontas</div></div><div class="qg-mini" style="cursor:pointer;" onclick="event.stopPropagation();goRepFilter('yellow')"><div class="n" style="color:var(--yellow);">${cai}</div><div class="l">🟡 Caindo</div></div><div class="qg-mini" style="cursor:pointer;" onclick="event.stopPropagation();goRepFilter('red')"><div class="n" style="color:var(--red);">${tira}</div><div class="l">🔴 Tira</div></div></div></div>`;
 
   const ins=DB.cash.filter(c=>c.type==="in").reduce((a,c)=>a+c.amount,0),outs=DB.cash.filter(c=>c.type==="out").reduce((a,c)=>a+c.amount,0),saldo=ins-outs;
   const now=new Date(),ym=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
