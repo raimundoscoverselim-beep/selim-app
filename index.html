@@ -166,8 +166,8 @@
   <section class="screen" id="s-rep">
     <div class="screen-title"><span class="dot"></span>Repertório Brutal</div>
     <div class="screen-sub">A lista geral de paulada + a colinha de cada uma.</div>
-    <div class="row between" style="margin-bottom:12px;">
-      <div class="row" style="gap:6px;flex-wrap:wrap;"><span class="pill green">🟢 Pronta</span><span class="pill yellow">🟡 Caindo</span><span class="pill red">🔴 Tira</span></div>
+    <div class="row between" style="margin-bottom:10px;">
+      <div id="songFilters" class="row" style="gap:6px;flex-wrap:wrap;"></div>
       <button class="btn primary sm" onclick="openSong()">+ MÚSICA</button>
     </div>
     <div id="songList"></div>
@@ -413,7 +413,7 @@ function load(){
 }
 function backfill(){ const s=makeSeed(); for(const k in s){ if(DB[k]===undefined) DB[k]=structuredClone(s[k]); }
   // garante campos novos das músicas
-  (DB.songs||[]).forEach(sg=>{["tom","bpm","singer","link","notes"].forEach(f=>{if(sg[f]===undefined)sg[f]="";});if(!sg.tags)sg.tags=[];if(sg.lastPlayed===undefined)sg.lastPlayed="";if(sg.plays===undefined)sg.plays=0;});
+  (DB.songs||[]).forEach(sg=>{["tom","bpm","singer","link","notes","lyrics"].forEach(f=>{if(sg[f]===undefined)sg[f]="";});if(!sg.tags)sg.tags=[];if(sg.lastPlayed===undefined)sg.lastPlayed="";if(sg.plays===undefined)sg.plays=0;});
   (DB.gigs||[]).forEach(g=>{if(g.city===undefined)g.city="";if(!g.participants)g.participants=[];if(!g.perMember)g.perMember={};});
   (DB.events||[]).forEach(e=>{if(!e.rsvp)e.rsvp={};});
   if(!DB.racha)DB.racha={cachet:0,expenses:[],who:[],bandMode:"none",bandFixed:0};
@@ -435,9 +435,11 @@ const dateBR=iso=>{if(!iso)return"";const[y,m,d]=iso.split("-");return `${d}/${m
 function toast(msg){const t=$("#toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),2200);}
 function go(s){$$(".screen").forEach(e=>e.classList.remove("active"));$("#s-"+s).classList.add("active");$$("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.s===s));window.scrollTo(0,0);}
 function showModal(html){$("#modalBox").innerHTML='<div class="modal-grip"></div>'+html;$("#modalBg").classList.add("open");}
-function closeModal(){$("#modalBg").classList.remove("open");}
+function closeModal(){const a=$("#modalBox audio");if(a){try{a.pause();}catch(e){}}$("#modalBg").classList.remove("open");}
 
 /* ============ 1. REPERTORIO + COLINHA ============ */
+let songFilter="all";
+function setSongFilter(f){songFilter=f;renderSongs();}
 function songFresh(s){
   if(!s.lastPlayed)return{txt:"sem registro",col:"var(--muted)",risk:false,never:true};
   const d=Math.floor((new Date(daysFromNow(0))-new Date(s.lastPlayed))/86400000);
@@ -445,37 +447,61 @@ function songFresh(s){
   if(d>=45)return{txt:`🟡 ${d}d sem tocar`,col:"var(--amber)",risk:d>60,d};
   return{txt:d<=1?"🟢 tocada agora":`🟢 tocada há ${d}d`,col:"var(--green)",risk:false,d};
 }
-function markPlayed(sid){const s=DB.songs.find(x=>x.id===sid);if(!s)return;s.lastPlayed=daysFromNow(0);s.plays=(s.plays||0)+1;save();toast(`"${s.name}" marcada como tocada 🎵`);}
+/* ----- ÁUDIO LOCAL (IndexedDB, fica salvo só neste aparelho) ----- */
+let _idb=null,audioSet=new Set(),_player=null;
+function idbOpen(){return new Promise((res,rej)=>{if(_idb)return res(_idb);const r=indexedDB.open("selim_audio",1);r.onupgradeneeded=()=>r.result.createObjectStore("mp3");r.onsuccess=()=>{_idb=r.result;res(_idb);};r.onerror=()=>rej(r.error);});}
+function audioSave(sid,blob){return idbOpen().then(db=>new Promise((res,rej)=>{const tx=db.transaction("mp3","readwrite");tx.objectStore("mp3").put(blob,sid);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);}));}
+function audioGet(sid){return idbOpen().then(db=>new Promise(res=>{const tx=db.transaction("mp3","readonly");const q=tx.objectStore("mp3").get(sid);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null);}));}
+function audioDel(sid){return idbOpen().then(db=>new Promise(res=>{const tx=db.transaction("mp3","readwrite");tx.objectStore("mp3").delete(sid);tx.oncomplete=res;tx.onerror=res;}));}
+function audioHas(sid){return audioGet(sid).then(b=>!!b);}
+function audioKeys(){return idbOpen().then(db=>new Promise(res=>{const tx=db.transaction("mp3","readonly");const q=tx.objectStore("mp3").getAllKeys();q.onsuccess=()=>res(q.result||[]);q.onerror=()=>res([]);}));}
+function refreshAudioSet(){return audioKeys().then(ks=>{audioSet=new Set(ks);renderSongs();});}
+function uploadMp3(sid,ev){const f=ev.target.files[0];if(!f||!sid)return;if(f.size>30*1024*1024){toast("MP3 muito grande (máx 30MB)");return;}audioSave(sid,f).then(()=>refreshAudioSet()).then(()=>updateAudioStatus(sid)).then(()=>toast("MP3 salvo neste aparelho 🎧"));}
+function removeMp3(sid){if(!confirm("Remover o MP3 deste aparelho?"))return;audioDel(sid).then(()=>refreshAudioSet()).then(()=>updateAudioStatus(sid)).then(()=>toast("MP3 removido"));}
+function updateAudioStatus(sid){const el=$("#audioStatus");if(!el)return Promise.resolve();return audioHas(sid).then(has=>{el.innerHTML=has?`✅ MP3 salvo neste aparelho · <a onclick="removeMp3('${sid}')" style="color:var(--red);cursor:pointer;text-decoration:underline;">remover</a>`:'Nenhum MP3 neste aparelho ainda.';});}
+function openPlayer(sid){const s=DB.songs.find(x=>x.id===sid);if(!s)return;audioGet(sid).then(blob=>{const url=blob?URL.createObjectURL(blob):"";
+  showModal(`<h3>🎧 ${esc(s.name)}</h3>
+    ${url?`<audio controls autoplay src="${url}" style="width:100%;margin:6px 0 14px;"></audio>`:'<div style="color:var(--muted);margin-bottom:12px;">Sem MP3 neste aparelho. Carrega pelo ✏️.</div>'}
+    ${s.lyrics?`<div style="border-top:1px dashed var(--line);padding-top:10px;"><div style="font-family:var(--display);color:var(--lime);font-size:13px;margin-bottom:8px;">📄 LETRA</div><div style="white-space:pre-wrap;font-size:14px;line-height:1.55;">${esc(s.lyrics)}</div></div>`:'<div style="color:var(--muted);font-size:13px;">Sem letra cadastrada (coloca pelo ✏️).</div>'}`);
+});}
+function openLyrics(sid){const s=DB.songs.find(x=>x.id===sid);if(!s)return;showModal(`<h3>📄 ${esc(s.name)}</h3>${s.lyrics?`<div style="white-space:pre-wrap;font-size:14px;line-height:1.55;">${esc(s.lyrics)}</div>`:'<div style="color:var(--muted);">Sem letra cadastrada.</div>'}`);}
 function renderSongs(){
   const el=$("#songList");
+  // chips de filtro por status
+  const tot=DB.songs.length,gn=DB.songs.filter(s=>s.status==="green").length,yl=DB.songs.filter(s=>s.status==="yellow").length,rd=DB.songs.filter(s=>s.status==="red").length;
+  const fEl=$("#songFilters");
+  if(fEl){const chip=(f,lbl,n)=>`<button class="chip ${songFilter===f?'sel':''}" onclick="setSongFilter('${f}')">${lbl} ${n}</button>`;
+    fEl.innerHTML=chip("all","Todas",tot)+chip("green","🟢",gn)+chip("yellow","🟡",yl)+chip("red","🔴",rd);}
   if(!DB.songs.length){el.innerHTML='<div class="empty"><div class="big">SEM MÚSICA</div>Adiciona a primeira paulada 🤘</div>';return;}
-  // card de risco de esquecimento (só músicas já tocadas e paradas há +60 dias)
+  // card de risco de esquecimento (considera todas, não só o filtro)
   const risco=DB.songs.map(s=>({s,f:songFresh(s)})).filter(o=>o.f.risk).sort((a,b)=>b.f.d-a.f.d);
   const riscoCard=risco.length?`<div class="card" style="border-color:var(--red);">
     <div class="qg-head" style="color:var(--red);">⚠️ RISCO DE ESQUECIMENTO</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Músicas paradas faz tempo. Bota no próximo ensaio antes que vire vexame.</div>
     ${risco.slice(0,8).map(o=>`<div class="row between" style="padding:5px 0;border-bottom:1px solid var(--line);"><span style="font-weight:600;">${esc(o.s.name)}</span><span style="font-size:12px;color:${o.f.col};font-family:var(--mono);">${o.f.d}d</span></div>`).join("")}</div>`:"";
-  el.innerHTML=riscoCard+DB.songs.map(sg=>{
+  const lista=songFilter==="all"?DB.songs:DB.songs.filter(s=>s.status===songFilter);
+  const cards=lista.map(sg=>{
     const st=STATUS[sg.status];const tags=(sg.tags||[]).map(t=>`<span class="pill tagx">${esc(t)}</span>`).join("");
     const cola=[sg.tom&&`Tom ${esc(sg.tom)}`,sg.bpm&&`${esc(sg.bpm)} BPM`,sg.singer&&`Canta: ${esc(sg.singer)}`].filter(Boolean).join(" · ");
-    const f=songFresh(sg);
+    const f=songFresh(sg);const hasAudio=audioSet.has(sg.id);
     return `<div class="card">
       <div class="row between"><div class="grow">
         <div style="font-family:var(--display);font-size:19px;letter-spacing:.5px;">${esc(sg.name)}</div>
         <div style="color:var(--muted);font-size:13px;font-family:var(--mono);margin-top:2px;">⏱ ${fmtTime(sg.dur)}${cola?' · '+cola:''}</div>
       </div><div class="row" style="gap:6px;">
-        ${sg.link?`<a class="iconbtn" href="${esc(sg.link)}" target="_blank" style="text-decoration:none;">▶️</a>`:''}
-        <button class="iconbtn" onclick="markPlayed('${sg.id}')" title="Marcar como tocada hoje">🎵</button>
+        ${hasAudio?`<button class="iconbtn" onclick="openPlayer('${sg.id}')" title="Tocar MP3 + letra" style="border-color:var(--lime);">▶️</button>`:(sg.lyrics?`<button class="iconbtn" onclick="openLyrics('${sg.id}')" title="Ver letra">📄</button>`:'')}
+        ${sg.link?`<a class="iconbtn" href="${esc(sg.link)}" target="_blank" style="text-decoration:none;" title="Link externo">🔗</a>`:''}
         <button class="iconbtn" onclick="openSong('${sg.id}')">✏️</button><button class="iconbtn" onclick="delSong('${sg.id}')">🗑️</button>
       </div></div>
-      <div class="row wrap" style="gap:6px;margin-top:10px;"><span class="pill ${st.cls}">${st.emoji} ${st.label}</span>${tags}</div>
+      <div class="row wrap" style="gap:6px;margin-top:10px;"><span class="pill ${st.cls}">${st.emoji} ${st.label}</span>${tags}${hasAudio?'<span class="pill green">🎧 MP3</span>':''}</div>
       <div style="margin-top:8px;font-size:11.5px;color:${f.col};font-family:var(--mono);">⏳ ${f.txt}${sg.plays?` · tocada ${sg.plays}x`:''}</div>
       ${sg.notes?`<div style="margin-top:6px;font-size:13px;color:var(--amber);">📌 ${esc(sg.notes)}</div>`:''}
     </div>`;
   }).join("");
+  el.innerHTML=riscoCard+(lista.length?cards:'<div class="empty">Nenhuma música nesse filtro 🤷</div>');
 }
 function openSong(sid){
-  const sg=sid?DB.songs.find(x=>x.id===sid):{name:"",dur:180,status:"yellow",tags:[],tom:"",bpm:"",singer:"",link:"",notes:""};
+  const sg=sid?DB.songs.find(x=>x.id===sid):{name:"",dur:180,status:"yellow",tags:[],tom:"",bpm:"",singer:"",link:"",notes:"",lyrics:"",lastPlayed:"",plays:0};
   const mins=Math.floor(sg.dur/60),secs=sg.dur%60;
   const statusBtns=Object.entries(STATUS).map(([k,v])=>`<button class="chip ${sg.status===k?'sel':''}" data-stt="${k}" onclick="pickStatus('${k}')">${v.emoji} ${v.label}</button>`).join("");
   const tagChips=ALLTAGS.map(t=>`<button class="chip ${(sg.tags||[]).includes(t)?'sel':''}" data-tg="${esc(t)}" onclick="this.classList.toggle('sel')">${esc(t)}</button>`).join("");
@@ -487,21 +513,30 @@ function openSong(sid){
     <div style="border-top:1px dashed var(--line);padding-top:12px;margin-bottom:4px;font-family:var(--display);font-size:14px;color:var(--lime);">🎸 COLINHA DO SHOW</div>
     <div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Tom</label><input id="m_tom" value="${esc(sg.tom)}" placeholder="Ex: E"></div><div class="field grow"><label class="fld">BPM</label><input id="m_bpm" value="${esc(sg.bpm)}" placeholder="Ex: 168"></div></div>
     <div class="field"><label class="fld">Quem canta</label><input id="m_singer" value="${esc(sg.singer)}" placeholder="Ex: Zé / todos no refrão"></div>
-    <div class="field"><label class="fld">Link (cifra / áudio / YouTube)</label><input id="m_link" value="${esc(sg.link)}" placeholder="https://..."></div>
     <div class="field"><label class="fld">Anotação (entrada, solo, etc)</label><input id="m_notes" value="${esc(sg.notes)}" placeholder="Ex: entra na contagem, solo dobrado"></div>
+    <div class="field"><label class="fld">Letra da música</label><textarea id="m_lyrics" rows="5" placeholder="Cola a letra aqui pra ler no palco...">${esc(sg.lyrics||"")}</textarea></div>
+    <div class="field"><label class="fld">Link externo (cifra / vídeo) — opcional</label><input id="m_link" value="${esc(sg.link)}" placeholder="https://..."></div>
+    <div style="border-top:1px dashed var(--line);padding-top:12px;margin-bottom:6px;font-family:var(--display);font-size:14px;color:var(--lime);">🎧 ÁUDIO MP3</div>
+    ${sid?`<div id="audioStatus" style="margin-bottom:6px;font-size:13px;color:var(--muted);">conferindo...</div>
+    <label class="btn ghost full sm" style="cursor:pointer;margin-bottom:6px;">📁 Carregar / Trocar MP3<input id="m_mp3" type="file" accept="audio/*" style="display:none;" onchange="uploadMp3('${sid}',event)"></label>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">O MP3 fica salvo só neste aparelho (não vai pra nuvem).</div>`
+    :`<div style="font-size:12px;color:var(--amber);margin-bottom:14px;">💾 Salva a música primeiro, depois reabre no ✏️ pra carregar o MP3.</div>`}
+    <div class="field"><label class="fld">Última vez tocada (vazio = nunca)</label><input id="m_last" type="date" value="${esc(sg.lastPlayed||"")}"></div>
     <button class="btn primary full" onclick="saveSong('${sid||""}')">SALVAR</button>`);
   $("#modalBox").dataset.status=sg.status;
+  if(sid)updateAudioStatus(sid);
 }
 function pickStatus(k){$("#modalBox").dataset.status=k;$$("#statusRow .chip").forEach(c=>c.classList.toggle("sel",c.dataset.stt===k));}
 function saveSong(sid){
   const name=$("#m_name").value.trim();if(!name){toast("Bota um nome, cuca!");return;}
   const data={name,dur:(+$("#m_min").value||0)*60+(+$("#m_sec").value||0),status:$("#modalBox").dataset.status,
     tags:$$(".modal .chip.sel[data-tg]").map(c=>c.dataset.tg),tom:$("#m_tom").value.trim(),bpm:$("#m_bpm").value.trim(),
-    singer:$("#m_singer").value.trim(),link:$("#m_link").value.trim(),notes:$("#m_notes").value.trim()};
-  if(sid)Object.assign(DB.songs.find(x=>x.id===sid),data);else DB.songs.push({id:id(),...data});
+    singer:$("#m_singer").value.trim(),link:$("#m_link").value.trim(),notes:$("#m_notes").value.trim(),
+    lyrics:$("#m_lyrics").value.trim(),lastPlayed:$("#m_last").value||""};
+  if(sid)Object.assign(DB.songs.find(x=>x.id===sid),data);else DB.songs.push({id:id(),...data,plays:0});
   closeModal();save();toast("Música salva 🤘");
 }
-function delSong(sid){if(!confirm("Tirar essa do repertório?"))return;DB.songs=DB.songs.filter(x=>x.id!==sid);DB.setlist=DB.setlist.filter(x=>x!==sid);save();}
+function delSong(sid){if(!confirm("Tirar essa do repertório?"))return;DB.songs=DB.songs.filter(x=>x.id!==sid);DB.setlist=DB.setlist.filter(x=>x!==sid);audioDel(sid).then(()=>refreshAudioSet());save();}
 
 /* ============ 2. SETLIST ============ */
 function setTotalSec(){return DB.setlist.reduce((a,sid)=>{const s=DB.songs.find(x=>x.id===sid);return a+(s?s.dur:0);},0);}
@@ -938,6 +973,7 @@ function renderAll(){renderQG();renderSongs();renderSet();renderAgenda();renderS
 load();
 renderAll();
 initSync();
+refreshAudioSet();
 </script>
 </body>
 </html>
