@@ -270,7 +270,10 @@
     <div class="screen-sub">Monta vários setlists — um pra cada show.</div>
 
     <div id="setListView">
-      <button class="btn primary full" style="margin-bottom:12px;" onclick="newSetlist()">+ NOVO SETLIST</button>
+      <div class="row" style="gap:8px;margin-bottom:12px;">
+        <button class="btn yellow grow" onclick="openSuggestSetlist()">🎲 SUGERIR SETLIST</button>
+        <button class="btn primary grow" onclick="newSetlist()">+ NOVO</button>
+      </div>
       <div id="setlistCards"></div>
     </div>
 
@@ -775,6 +778,142 @@ function renderSet(){
       <div class="row grow" style="gap:8px;"><span>${st.emoji}</span><span style="font-weight:600;">${esc(s.name)}</span><span style="color:var(--muted);font-family:var(--mono);font-size:12px;">${fmtTime(s.dur)}</span></div>
       <span style="color:var(--lime);font-weight:700;">${inSet?"✓ no set":"+ add"}</span></div></div>`;}).join("");
 }
+
+/* ===== GERADOR DE SETLIST INTELIGENTE ===== */
+function openSuggestSetlist(){
+  showModal(`<h3>🎲 Sugerir Setlist</h3>
+    <div class="field"><label class="fld">Duração alvo</label>
+      <div class="chip-row" id="sl_dur_chips" style="gap:8px;flex-wrap:wrap;">
+        <button class="chip sel" data-min="45" onclick="pickSlDur(this)">45 min</button>
+        <button class="chip" data-min="60" onclick="pickSlDur(this)">60 min</button>
+        <button class="chip" data-min="75" onclick="pickSlDur(this)">75 min</button>
+        <button class="chip" data-min="90" onclick="pickSlDur(this)">90 min</button>
+      </div>
+      <input type="hidden" id="sl_target_min" value="45">
+    </div>
+    <div class="field"><label class="fld">Prioridade</label>
+      <div class="chip-row" id="sl_prio_chips" style="gap:8px;flex-wrap:wrap;">
+        <button class="chip sel" data-p="balanced" onclick="pickSlPrio(this)">⚖️ Balanceado</button>
+        <button class="chip" data-p="fresh" onclick="pickSlPrio(this)">⏳ Esquecidas</button>
+        <button class="chip" data-p="hits" onclick="pickSlPrio(this)">🏆 Mais tocadas</button>
+        <button class="chip" data-p="ready" onclick="pickSlPrio(this)">🟢 Só prontas</button>
+      </div>
+      <input type="hidden" id="sl_prio" value="balanced">
+    </div>
+    <button class="btn yellow full" onclick="runSuggestSetlist()">🎲 GERAR SUGESTÃO</button>
+  `);
+}
+function pickSlDur(btn){
+  $$("#sl_dur_chips .chip").forEach(b=>b.classList.remove("sel"));
+  btn.classList.add("sel");
+  $("#sl_target_min").value=btn.dataset.min;
+}
+function pickSlPrio(btn){
+  $$("#sl_prio_chips .chip").forEach(b=>b.classList.remove("sel"));
+  btn.classList.add("sel");
+  $("#sl_prio").value=btn.dataset.p;
+}
+function _scoreSong(s, prio){
+  // base: status
+  const statusW = s.status==="green"?100 : s.status==="yellow"?40 : 0;
+  if(prio==="ready" && s.status!=="green") return -1; // só prontas
+
+  // recência: quanto mais tempo sem tocar, maior a prioridade
+  let recencyW = 0;
+  const f = songFresh(s);
+  if(f.never) recencyW = 80;           // nunca tocada = alta prioridade
+  else if(f.d > 90) recencyW = 90;
+  else if(f.d > 60) recencyW = 70;
+  else if(f.d > 30) recencyW = 40;
+  else if(f.d > 14) recencyW = 20;
+  else recencyW = 0;
+
+  // popularidade: plays
+  const maxPlays = Math.max(...DB.songs.map(x=>x.plays||0), 1);
+  const playsW = Math.round(((s.plays||0)/maxPlays)*60);
+
+  if(prio==="balanced") return statusW*0.5 + recencyW*0.35 + playsW*0.15 + Math.random()*10;
+  if(prio==="fresh")    return statusW*0.2 + recencyW*0.70 + playsW*0.05 + Math.random()*10;
+  if(prio==="hits")     return statusW*0.3 + recencyW*0.10 + playsW*0.55 + Math.random()*10;
+  if(prio==="ready")    return statusW*0.5 + recencyW*0.35 + playsW*0.15 + Math.random()*10;
+  return 0;
+}
+function runSuggestSetlist(){
+  const targetSec = (+$("#sl_target_min").value || 45) * 60;
+  const prio = $("#sl_prio").value || "balanced";
+
+  // Pontuar e ordenar
+  const scored = DB.songs
+    .map(s => ({s, score: _scoreSong(s, prio)}))  // será corrigido abaixo
+    .filter(o => o.score >= 0)
+    .sort((a,b) => b.score - a.score);
+
+  // Montar setlist respeitando duração alvo (greedy)
+  const picked = [];
+  let total = 0;
+  for(const {s} of scored){
+    if(total + s.dur <= targetSec + 30){ // tolerância de 30s
+      picked.push(s);
+      total += s.dur;
+    }
+    if(total >= targetSec - 30) break;
+  }
+
+  if(!picked.length){toast("Nenhuma música elegível! Verifica o repertório.");return;}
+
+  closeModal();
+  _showSetlistPreview(picked, targetSec, prio);
+}
+function _showSetlistPreview(songs, targetSec, prio){
+  const totalSec = songs.reduce((a,s)=>a+s.dur,0);
+  const rows = songs.map((s,i)=>{
+    const f=songFresh(s);
+    const tag = f.never?"🔕 nunca":f.d>60?`⏳ ${f.d}d`:`🟢 ${f.d||0}d`;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);">
+      <span style="font-family:var(--display);color:var(--lime);min-width:22px;">${i+1}</span>
+      <span style="flex:1;font-size:14px;">${esc(s.name)}</span>
+      <span style="font-size:11px;color:var(--muted);font-family:var(--mono);">${fmtTime(s.dur)}</span>
+      <span style="font-size:10px;color:var(--muted);min-width:56px;text-align:right;">${tag}</span>
+    </div>`;
+  }).join("");
+
+  const prioLabels={balanced:"⚖️ Balanceado",fresh:"⏳ Esquecidas",hits:"🏆 Hits",ready:"🟢 Só prontas"};
+
+  _lastSuggestedIds = songs.map(s=>s.id);
+  showModal(`<h3>🎲 Setlist Sugerido</h3>
+    <div style="display:flex;gap:12px;margin-bottom:12px;">
+      <div style="flex:1;background:var(--panel-2);border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-family:var(--display);font-size:20px;color:var(--lime);">${fmtLong(totalSec)}</div>
+        <div style="font-size:11px;color:var(--muted);">duração</div>
+      </div>
+      <div style="flex:1;background:var(--panel-2);border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-family:var(--display);font-size:20px;">${songs.length}</div>
+        <div style="font-size:11px;color:var(--muted);">músicas</div>
+      </div>
+      <div style="flex:1;background:var(--panel-2);border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:13px;color:var(--amber);">${prioLabels[prio]||prio}</div>
+        <div style="font-size:11px;color:var(--muted);">critério</div>
+      </div>
+    </div>
+    <div style="max-height:320px;overflow-y:auto;margin-bottom:14px;">${rows}</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn ghost grow" onclick="runSuggestSetlist()">🔄 Gerar outro</button>
+      <button class="btn yellow grow" onclick="_createSuggestedSetlist()">✅ Criar este</button>
+    </div>
+  `);
+}
+let _lastSuggestedIds=[];
+function _createSuggestedSetlist(songIds){
+  const ids = songIds || _lastSuggestedIds;
+  const hoje = new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
+  const ns = {id:id(), name:`Sugerido – ${hoje}`, songs:ids, notes:"", ts:Date.now()};
+  DB.setlists.push(ns);
+  curSetId = ns.id;
+  closeModal();
+  save();
+  toast("Setlist criado! Edita à vontade 🤘");
+}
+
 function newSetlist(){showModal(`<h3>Novo Setlist</h3><div class="field"><label class="fld">Nome (ex: Show Bar Tupã)</label><input id="sl_name" placeholder="Nome do show / ocasião"></div><button class="btn primary full" onclick="createSetlist()">CRIAR</button>`);setTimeout(()=>{try{$("#sl_name").focus();}catch(e){}},120);}
 function createSetlist(){const name=$("#sl_name").value.trim()||"Setlist sem nome";const ns={id:id(),name,songs:[],notes:"",ts:Date.now()};DB.setlists.push(ns);curSetId=ns.id;closeModal();save();toast("Setlist criado 🤘");}
 function openSetlistEdit(sid){curSetId=sid;renderSet();try{window.scrollTo(0,0);}catch(e){}}
