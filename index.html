@@ -178,6 +178,20 @@
   .who-btn .who-emoji{font-size:32px;line-height:1;}
   .who-btn .who-name{font-family:var(--display);font-size:15px;color:var(--ink);letter-spacing:1px;}
   .who-btn .who-role{font-size:11px;color:var(--muted);}
+  /* ===== TECLADO PIN ===== */
+  .pin-overlay{position:fixed;inset:0;background:rgba(14,15,13,.97);z-index:950;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;}
+  .pin-overlay.hidden{display:none;}
+  .pin-who{font-family:var(--display);font-size:22px;color:var(--lime);margin-bottom:4px;text-align:center;letter-spacing:1px;}
+  .pin-sub{font-size:13px;color:var(--muted);margin-bottom:20px;text-align:center;}
+  .pin-dots{display:flex;gap:14px;margin-bottom:24px;}
+  .pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);background:transparent;transition:.15s;}
+  .pin-dot.filled{background:var(--lime);border-color:var(--lime);}
+  .pin-dot.error{background:var(--red);border-color:var(--red);}
+  .pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;max-width:260px;}
+  .pin-key{background:var(--panel);border:1px solid var(--line);border-radius:12px;height:60px;font-family:var(--display);font-size:22px;color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.1s;user-select:none;}
+  .pin-key:active{transform:scale(.93);border-color:var(--lime);color:var(--lime);}
+  .pin-key.del{font-size:18px;color:var(--muted);}
+  .pin-key.back-who{grid-column:1/4;height:44px;font-size:13px;color:var(--muted);font-family:var(--body);margin-top:4px;background:transparent;border-color:transparent;}
   /* badge membro no header */
   .member-badge{position:absolute;top:14px;left:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:20px;padding:5px 10px;font-size:11px;font-weight:700;color:var(--lime);letter-spacing:.5px;display:flex;align-items:center;gap:5px;cursor:pointer;}
   .member-badge .mb-emoji{font-size:16px;}
@@ -187,10 +201,37 @@
 
 
 <!-- OVERLAY: Quem é você, soldado? -->
-<div class="who-overlay" id="whoOverlay">
+<div class="who-overlay hidden" id="whoOverlay">
   <div class="who-title">🎸 Quem é você, soldado?</div>
   <div class="who-sub">Identifique-se pra entrar no Quartel</div>
   <div class="who-grid" id="whoGrid"></div>
+</div>
+
+<!-- OVERLAY: PIN -->
+<div class="pin-overlay hidden" id="pinOverlay">
+  <div class="pin-who" id="pinWhoName"></div>
+  <div class="pin-sub" id="pinSub">Digite seu PIN de 4 dígitos</div>
+  <div class="pin-dots" id="pinDots">
+    <div class="pin-dot" id="pd0"></div>
+    <div class="pin-dot" id="pd1"></div>
+    <div class="pin-dot" id="pd2"></div>
+    <div class="pin-dot" id="pd3"></div>
+  </div>
+  <div class="pin-pad">
+    <button class="pin-key" onclick="pinKey('1')">1</button>
+    <button class="pin-key" onclick="pinKey('2')">2</button>
+    <button class="pin-key" onclick="pinKey('3')">3</button>
+    <button class="pin-key" onclick="pinKey('4')">4</button>
+    <button class="pin-key" onclick="pinKey('5')">5</button>
+    <button class="pin-key" onclick="pinKey('6')">6</button>
+    <button class="pin-key" onclick="pinKey('7')">7</button>
+    <button class="pin-key" onclick="pinKey('8')">8</button>
+    <button class="pin-key" onclick="pinKey('9')">9</button>
+    <button class="pin-key del" onclick="pinDel()">⌫</button>
+    <button class="pin-key" onclick="pinKey('0')">0</button>
+    <button class="pin-key del" onclick="pinCancel()">✕</button>
+  </div>
+  <button class="pin-key back-who" onclick="pinCancel()">← Voltar pra escolha de membro</button>
 </div>
 
 <header>
@@ -313,6 +354,7 @@
         <div class="lbl">🐷 Cofre dos Vacilos</div><div class="val" id="cofreVal">R$ 0</div>
         <div style="font-size:11px;color:var(--lime);">arrecadado na base da vergonha</div>
       </div>
+      <div id="multaMes" style="font-size:12px;color:var(--amber);text-align:center;margin-bottom:6px;"></div>
       <button class="btn primary full sm" onclick="cofreToCaixa()" style="margin-bottom:14px;">💰 MANDAR COFRE PRO CAIXA DA BANDA</button>
       <div class="card">
         <h3 style="font-size:16px;margin-bottom:8px;">Aplicar Multa</h3>
@@ -495,6 +537,7 @@ function load(){
 }
 function backfill(){ const s=makeSeed(); for(const k in s){ if(DB[k]===undefined) DB[k]=structuredClone(s[k]); }
   // garante campos novos das músicas
+  (DB.members||[]).forEach(m=>{if(m.pin===undefined)m.pin="";});
   (DB.songs||[]).forEach(sg=>{["tom","bpm","singer","link","notes","lyrics","fala"].forEach(f=>{if(sg[f]===undefined)sg[f]="";});if(!sg.tags)sg.tags=[];if(sg.lastPlayed===undefined)sg.lastPlayed="";if(sg.plays===undefined)sg.plays=0;});
   if(!Array.isArray(DB.setlists)){DB.setlists=[];if((DB.setlist||[]).length)DB.setlists.push({id:id(),name:"Meu Setlist",songs:[...DB.setlist],notes:"",ts:Date.now()});}
   (DB.gigs||[]).forEach(g=>{if(g.city===undefined)g.city="";if(!g.participants)g.participants=[];if(!g.perMember)g.perMember={};});
@@ -520,8 +563,60 @@ function setCurrentMember(m){localStorage.setItem(MEMBER_KEY,JSON.stringify(m));
 function clearCurrentMember(){localStorage.removeItem(MEMBER_KEY);updateMemberBadge();}
 function updateMemberBadge(){const m=currentMember();const badge=$("#memberBadge");if(!badge)return;if(m){badge.style.display="flex";$("#memberEmoji").textContent=getMemberEmoji(m.role||"");$("#memberName").textContent=m.name.split("/")[0].split(" ")[0].toUpperCase();}else{badge.style.display="none";}}
 function openWhoOverlay(){const ov=$("#whoOverlay");if(ov)ov.classList.remove("hidden");}
-function selectMember(mid){const m=DB.members.find(x=>x.id===mid);if(!m)return;setCurrentMember({id:mid,name:m.name,role:m.role||""});const ov=$("#whoOverlay");if(ov)ov.classList.add("hidden");toast("Bem-vindo, "+m.name.split("/")[0]+"! 🤘");}
-function renderWhoGrid(){const grid=$("#whoGrid");if(!grid)return;grid.innerHTML=DB.members.map(m=>`<button class="who-btn" onclick="selectMember('${m.id}')"><span class="who-emoji">${getMemberEmoji(m.role||"")}</span><span class="who-name">${esc(m.name.split("/")[0])}</span><span class="who-role">${esc(m.role||"")}</span></button>`).join("");}
+
+/* ── PIN ── */
+let _pinMid=null,_pinBuf="";
+function selectMember(mid){
+  const m=DB.members.find(x=>x.id===mid);if(!m)return;
+  if(m.pin&&m.pin.length===4){
+    // tem PIN → abrir teclado
+    _pinMid=mid;_pinBuf="";
+    const ov=$("#pinOverlay");if(!ov)return;
+    $("#pinWhoName").textContent=getMemberEmoji(m.role||"")+" "+m.name.split("/")[0];
+    $("#pinSub").textContent="Digite seu PIN de 4 dígitos";
+    $("#pinSub").style.color="var(--muted)";
+    _pinRender();
+    ov.classList.remove("hidden");
+  } else {
+    // sem PIN → entra direto
+    _doLogin(mid);
+  }
+}
+function _pinRender(){
+  [0,1,2,3].forEach(i=>{const d=$("#pd"+i);if(!d)return;d.classList.toggle("filled",i<_pinBuf.length);d.classList.remove("error");});
+}
+function pinKey(k){
+  if(_pinBuf.length>=4)return;
+  _pinBuf+=k;_pinRender();
+  if(_pinBuf.length===4)setTimeout(_pinCheck,120);
+}
+function pinDel(){if(_pinBuf.length>0){_pinBuf=_pinBuf.slice(0,-1);_pinRender();}}
+function pinCancel(){
+  _pinMid=null;_pinBuf="";
+  const ov=$("#pinOverlay");if(ov)ov.classList.add("hidden");
+}
+function _pinCheck(){
+  const m=DB.members.find(x=>x.id===_pinMid);if(!m)return;
+  if(_pinBuf===m.pin){
+    // correto
+    $("#pinOverlay").classList.add("hidden");
+    _doLogin(_pinMid);
+    _pinMid=null;_pinBuf="";
+  } else {
+    // errado
+    [0,1,2,3].forEach(i=>{const d=$("#pd"+i);if(d){d.classList.remove("filled");d.classList.add("error");}});
+    $("#pinSub").textContent="PIN errado! Tenta de novo 🔴";
+    $("#pinSub").style.color="var(--red)";
+    setTimeout(()=>{_pinBuf="";_pinRender();$("#pinSub").textContent="Digite seu PIN de 4 dígitos";$("#pinSub").style.color="var(--muted)";},900);
+  }
+}
+function _doLogin(mid){
+  const m=DB.members.find(x=>x.id===mid);if(!m)return;
+  setCurrentMember({id:mid,name:m.name,role:m.role||""});
+  const ov=$("#whoOverlay");if(ov)ov.classList.add("hidden");
+  toast("Bem-vindo, "+m.name.split("/")[0]+"! 🤘");
+}
+function renderWhoGrid(){const grid=$("#whoGrid");if(!grid)return;grid.innerHTML=DB.members.map(m=>`<button class="who-btn" onclick="selectMember('${m.id}')"><span class="who-emoji">${getMemberEmoji(m.role||"")}</span><span class="who-name">${esc(m.name.split("/")[0])}</span><span class="who-role">${esc(m.role||"")}${m.pin?"  🔒":""}</span></button>`).join("");}
 function initLogin(){renderWhoGrid();const m=currentMember();if(!m||!DB.members.find(x=>x.id===m.id)){openWhoOverlay();}else{updateMemberBadge();}}
 
 const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -884,8 +979,8 @@ function renderShame(){
   $("#shameBoard").innerHTML=DB.members.length?ranked.map((m,i)=>{const c=DB.shame[m.id]||0;const lead=i===0&&c>0;
     return `<div class="card" style="${lead?'border-color:var(--red);':''}"><div class="row between"><div class="row" style="gap:10px;">
       <div style="font-family:var(--display);font-size:24px;color:${lead?'var(--red)':'var(--muted)'};width:30px;">${lead?'🤡':i+1}</div>
-      <div><div style="font-family:var(--display);font-size:17px;">${esc(m.name)}</div><div style="font-size:11px;color:var(--muted);">${esc(m.role||"")}${lead?' · O VACILÃO-MOR':''}</div></div></div>
-      <div class="row" style="gap:8px;"><button class="iconbtn" onclick="bump('${m.id}',-1)">–</button><div style="font-family:var(--display);font-size:28px;color:var(--red);min-width:34px;text-align:center;">${c}</div><button class="iconbtn" onclick="bump('${m.id}',1)">+</button></div></div></div>`;
+      <div><div style="font-family:var(--display);font-size:17px;">${esc(m.name)}${m.pin?' 🔒':' <span style=\'color:var(--amber);font-size:11px;\'>sem PIN</span>'}</div><div style="font-size:11px;color:var(--muted);">${esc(m.role||"")}${lead?' · O VACILÃO-MOR':''}</div></div></div>
+      <div class="row" style="gap:8px;"><button class="iconbtn" title="Editar membro" onclick="openMember('${m.id}')">✏️</button><button class="iconbtn" onclick="bump('${m.id}',-1)">–</button><div style="font-family:var(--display);font-size:28px;color:var(--red);min-width:34px;text-align:center;">${c}</div><button class="iconbtn" onclick="bump('${m.id}',1)">+</button></div></div></div>`;
   }).join(""):'<div class="empty">Sem integrantes. Adiciona aí 👇</div>';
   $("#shameWho").innerHTML=DB.members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
   $("#excuseChips").innerHTML=DB.excuses.map(e=>`<button class="chip" data-ex="${esc(e)}" onclick="pickExcuse(this)">${esc(e)}</button>`).join("");
@@ -896,14 +991,51 @@ function bump(mid,d){DB.shame[mid]=Math.max(0,(DB.shame[mid]||0)+d);save();}
 function pickExcuse(b){pickedExcuse=b.dataset.ex;$$("#excuseChips .chip").forEach(c=>c.classList.toggle("sel",c===b));}
 function logShame(){const mid=$("#shameWho").value;const m=DB.members.find(x=>x.id===mid);if(!m)return;DB.shame[mid]=(DB.shame[mid]||0)+1;DB.shameLog.unshift({member:m.name,reason:pickedExcuse||"Vacilo genérico",ts:Date.now()});pickedExcuse="";save();toast("🔨 +1 vergonha!");}
 function resetShame(){showConfirm("Zerar o placar?",()=>{DB.shame={};DB.shameLog=[];save();});}
-function openMember(){showModal(`<h3>Novo Integrante</h3><div class="field"><label class="fld">Nome / Apelido</label><input id="mb_name" placeholder="Ex: Zé da Guita"></div><div class="field"><label class="fld">Função</label><input id="mb_role" placeholder="Ex: Guitarra solo"></div><button class="btn primary full" onclick="saveMember()">ADICIONAR</button>`);}
-function saveMember(){const name=$("#mb_name").value.trim();if(!name){toast("Bota o nome!");return;}DB.members.push({id:id(),name,role:$("#mb_role").value.trim()});closeModal();save();}
+function openMember(mid){
+  const m=mid?DB.members.find(x=>x.id===mid):null;
+  const pin=m&&m.pin?m.pin:"";
+  showModal(`<h3>${m?"Editar":"Novo"} Integrante</h3>
+    <div class="field"><label class="fld">Nome / Apelido</label><input id="mb_name" placeholder="Ex: Zé da Guita" value="${m?esc(m.name):''}"></div>
+    <div class="field"><label class="fld">Função</label>
+      <div class="chip-row" id="mb_role_chips" style="margin-bottom:0;flex-wrap:wrap;gap:6px;">
+        ${["Frente","Solo","Grave","Pancadaria"].map(r=>`<button class="chip ${(m?m.role:""')===r?'sel':''}" onclick="pickMbRole('${r}',this)">${getMemberEmoji(r)} ${r}</button>`).join("")}
+      </div>
+      <input type="hidden" id="mb_role" value="${m?esc(m.role||''):''}">
+    </div>
+    <div class="field"><label class="fld">🔒 PIN de 4 dígitos <span style="color:var(--muted);font-size:11px;">(deixe vazio = sem proteção)</span></label>
+      <input id="mb_pin" type="password" inputmode="numeric" maxlength="4" placeholder="Ex: 1234" value="${pin}" style="letter-spacing:8px;font-size:20px;"></div>
+    <button class="btn primary full" onclick="saveMember('${mid||''}')">SALVAR</button>
+    ${m?`<button class="btn ghost full" style="margin-top:8px;" onclick="delMember('${m.id}')">🗑️ Remover integrante</button>`:''}
+  `);
+  if(m&&m.role)setTimeout(()=>{try{$$('#mb_role_chips .chip').forEach(b=>b.classList.toggle('sel',b.textContent.trim().includes(m.role)));}catch(e){}},50);
+}
+function pickMbRole(r,btn){$("#mb_role").value=r;$$('#mb_role_chips .chip').forEach(b=>b.classList.remove('sel'));btn.classList.add('sel');}
+function saveMember(mid){
+  const name=$("#mb_name").value.trim();
+  if(!name){toast("Bota o nome!");return;}
+  const role=$("#mb_role").value.trim();
+  const pinRaw=($("#mb_pin").value||"").trim();
+  const pin=pinRaw.length===4&&/^\d{4}$/.test(pinRaw)?pinRaw:"";
+  if(pinRaw&&!pin){toast("PIN deve ter exatamente 4 números!");return;}
+  if(mid){
+    const m=DB.members.find(x=>x.id===mid);
+    if(m){m.name=name;m.role=role;m.pin=pin;}
+  } else {
+    DB.members.push({id:id(),name,role,pin});
+  }
+  closeModal();save();toast(mid?"Integrante atualizado 🤘":"Soldado adicionado ao quartel 🤘");
+}
+function delMember(mid){showConfirm("Remover este integrante?\nIsso some o histórico de multas e prontidão dele também.",()=>{DB.members=DB.members.filter(x=>x.id!==mid);delete DB.shame[mid];delete DB.equipment[mid];DB.fineLog=DB.fineLog.filter(f=>f.memberId!==mid);closeModal();save();});}
 /* cofre */
 function renderCofre(){
   $("#fineWho").innerHTML=DB.members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
   $("#fineRuleChips").innerHTML=DB.fineRules.map(r=>`<button class="chip" onclick="applyFine('${r.id}')">${esc(r.label)} · ${money(r.amount)}</button>`).join("");
   const total=DB.fineLog.filter(f=>f.paid).reduce((a,f)=>a+f.amount,0);
   $("#cofreVal").textContent=money(total);
+  // Total arrecadado em multas no mês atual (já no caixa)
+  const ym=new Date().getFullYear()+"-"+String(new Date().getMonth()+1).padStart(2,"0");
+  const multaMes=DB.cash.filter(c=>c.cat==="multa"&&new Date(c.ts).toISOString().slice(0,7)===ym).reduce((a,c)=>a+c.amount,0);
+  const multaMesEl=$("#multaMes");if(multaMesEl)multaMesEl.textContent="⚖️ Multas no mês: "+money(multaMes);
   const byMember=DB.members.map(m=>{const owed=DB.fineLog.filter(f=>f.memberId===m.id&&!f.paid);const sum=owed.reduce((a,f)=>a+f.amount,0);
     if(!owed.length)return"";
     const items=owed.map(f=>`<span class="pill red">${esc(f.label)} ${money(f.amount)}</span>`).join(" ");
@@ -912,7 +1044,13 @@ function renderCofre(){
   }).filter(Boolean).join("");
   $("#fineByMember").innerHTML=byMember||'<div class="empty">Ninguém devendo. Milagre.</div>';
 }
-function applyFine(rid){const r=DB.fineRules.find(x=>x.id===rid);const mid=$("#fineWho").value;const m=DB.members.find(x=>x.id===mid);if(!r||!m)return;DB.fineLog.unshift({id:id(),memberId:mid,label:r.label,amount:r.amount,ts:Date.now(),paid:false});save();toast(`${m.name} levou multa de ${money(r.amount)} 🐷`);}
+function applyFine(rid){const r=DB.fineRules.find(x=>x.id===rid);const mid=$("#fineWho").value;const m=DB.members.find(x=>x.id===mid);if(!r||!m)return;
+  const fine={id:id(),memberId:mid,label:r.label,amount:r.amount,ts:Date.now(),paid:false};
+  DB.fineLog.unshift(fine);
+  // Lança automaticamente no caixa como entrada
+  DB.cash.push({id:id(),type:"in",desc:`⚖️ Multa: ${r.label} — ${m.name.split("/")[0]}`,amount:r.amount,ts:Date.now(),cat:"multa"});
+  save();
+  toast(`⚖️ SENTENÇA EXECUTADA! ${money(r.amount)} do caba ${m.name.split("/")[0]} foi pro caixa! 🐷`);}
 function payFines(mid){DB.fineLog.forEach(f=>{if(f.memberId===mid&&!f.paid)f.paid=true;});save();toast("Pago! Foi pro cofre 💰");}
 function cofreToCaixa(){const total=DB.fineLog.filter(f=>f.paid).reduce((a,f)=>a+f.amount,0);if(!total){toast("Cofre vazio!");return;}showConfirm(`Mandar ${money(total)} do cofre pro caixa da banda?`,()=>{DB.cash.push({id:id(),type:"in",desc:"Cofre dos Vacilos 🐷",amount:total,ts:Date.now()});DB.fineLog=DB.fineLog.filter(f=>!f.paid);save();toast("Cofre esvaziado pro caixa 💰");});}
 function openFineRule(){showModal(`<h3>Novo Tipo de Multa</h3><div class="field"><label class="fld">Vacilo</label><input id="fr_label" placeholder="Ex: Chegou bêbado no ensaio"></div><div class="field"><label class="fld">Valor R$</label><input id="fr_amt" type="number" placeholder="10"></div><button class="btn primary full" onclick="saveFineRule()">CRIAR</button>`);}
@@ -984,7 +1122,7 @@ function delContact(cid){showConfirm("Apagar compadre?",()=>{DB.contacts=DB.cont
 
 /* ============ 6. CAIXA + RACHA + MERCH + BALCAO ============ */
 function shopTab(t){$$(".shop-pane").forEach(p=>p.style.display="none");$("#shop-"+t).style.display="block";$$(".seg button[data-st]").forEach(b=>b.classList.toggle("on",b.dataset.st===t));}
-const CAT={cache:"🎤",repasse:"🙋",gasto:"⛽",venda:"👕",producao:"🏭",cofre:"🐷",outro:"💵"};
+const CAT={cache:"🎤",repasse:"🙋",gasto:"⛽",venda:"👕",producao:"🏭",cofre:"🐷",multa:"⚖️",outro:"💵"};
 function renderShop(){
   const ins=DB.cash.filter(c=>c.type==="in").reduce((a,c)=>a+c.amount,0),outs=DB.cash.filter(c=>c.type==="out").reduce((a,c)=>a+c.amount,0),saldo=ins-outs;
   $("#saldoVal").textContent=money(saldo);$("#saldoVal").style.color=saldo>=0?"var(--lime)":"var(--red)";$("#totalIn").textContent=money(ins);$("#totalOut").textContent=money(outs);
@@ -1204,7 +1342,22 @@ function renderQG(){
   const card5=`<div class="qg-card" style="cursor:default;"><div class="qg-head">🚨 ALERTAS DO QUARTEL</div>
     ${al.length?al.map(a=>`<div class="alert-item"><span>${a[0]}</span><span>${a[1]}</span></div>`).join(""):'<div style="color:var(--green);font-weight:600;">✅ Tudo sob controle, soldado. Sem pendências.</div>'}</div>`;
 
-  $("#qgBoard").innerHTML=card1+card2+card3+card4+card5;
+  // CARD 6 — Saúde do Repertório
+  const never=DB.songs.filter(s=>!s.lastPlayed||s.plays===0);
+  const emRisco60=DB.songs.filter(s=>{if(!s.lastPlayed)return false;const d=Math.floor((new Date(daysFromNow(0))-new Date(s.lastPlayed))/86400000);return d>60;});
+  const top5=[...DB.songs].filter(s=>s.plays>0).sort((a,b)=>b.plays-a.plays).slice(0,5);
+  const maxPlays=top5.length?top5[0].plays:1;
+  const top5rows=top5.map(s=>`<div class="row between" style="padding:3px 0;font-size:13px;gap:8px;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);">${esc(s.name)}</span><div style="flex:none;display:flex;align-items:center;gap:6px;"><div style="width:60px;height:5px;background:var(--panel-2);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${Math.round(s.plays/maxPlays*100)}%;background:var(--lime);border-radius:3px;"></div></div><span style="font-family:var(--mono);font-size:11px;color:var(--muted);min-width:18px;text-align:right;">${s.plays}x</span></div></div>`).join("")||'<div style="color:var(--muted);font-size:13px;">Nenhuma tocada ainda. Bora pro show!</div>';
+  const card6=`<div class="qg-card" style="cursor:default;"><div class="qg-head">🩺 SAÚDE DO REPERTÓRIO</div>
+    <div class="qg-grid" style="margin-bottom:12px;">
+      <div class="qg-mini" style="cursor:pointer;" onclick="goRepFilter('all')"><div class="n" style="color:var(--amber);">${emRisco60.length}</div><div class="l">⏳ Sem tocar 60d+</div></div>
+      <div class="qg-mini" style="cursor:pointer;" onclick="goRepFilter('all')"><div class="n" style="color:var(--muted);">${never.length}</div><div class="l">🔕 Nunca ao vivo</div></div>
+    </div>
+    <div style="font-family:var(--display);font-size:11px;letter-spacing:1.5px;color:var(--lime);margin-bottom:6px;">🏆 CAMPEÃS DO SETLIST</div>
+    ${top5rows}
+  </div>`;
+
+  $("#qgBoard").innerHTML=card1+card2+card3+card4+card5+card6;
 }
 
 function renderAll(){renderQG();renderSongs();renderSet();renderAgenda();renderShame();renderRoad();renderShop();renderWhoGrid();}
