@@ -118,6 +118,9 @@
   .rsvp-btns button.talvez{background:var(--amber);color:#0e0f0d;border-color:var(--amber);}
   .stars{color:var(--line);font-size:15px;letter-spacing:1px;cursor:pointer;}.stars .f{color:var(--yellow);}
   /* MODO PALCO */
+  .busca{width:100%;margin-bottom:10px;padding:11px 12px;border-radius:var(--r);border:1px solid var(--line);
+         background:var(--panel-2);color:var(--ink);font-size:15px;font-family:inherit;}
+  .busca:focus{outline:none;border-color:var(--lime);}
   .palco{position:fixed;inset:0;background:#000;z-index:600;display:none;flex-direction:column;color:#fff;}
   .palco.open{display:flex;}
   .palco-top{padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #222;}
@@ -265,6 +268,7 @@
       <button class="btn ghost grow sm" onclick="openAudio('')">+ ÁUDIO 🔊</button>
       <button class="btn ghost grow sm" onclick="openBlocos()">🧱 BLOCOS</button>
     </div>
+    <input id="repBusca" class="busca" type="search" placeholder="🔎 Buscar música…" oninput="renderSongs()" autocomplete="off">
     <div id="songList"></div>
   </section>
 
@@ -305,6 +309,7 @@
       <div id="setBuilder"></div>
       <div class="divider"></div>
       <div class="screen-sub" style="margin-bottom:8px;">CLICA PRA ADICIONAR NO SETLIST 👇</div>
+      <input id="poolBusca" class="busca" type="search" placeholder="🔎 Buscar pra adicionar…" oninput="renderSet()" autocomplete="off">
       <div id="setPool"></div>
     </div>
   </section>
@@ -386,6 +391,7 @@
       <button class="on" data-rt="check" onclick="roadTab('check')">CHECKLIST</button>
       <button data-rt="vias" onclick="roadTab('vias')">VIAS</button>
       <button data-rt="contatos" onclick="roadTab('contatos')">COMPADRES</button>
+      <button data-rt="rider" onclick="openRider()">RIDER</button>
     </div>
     <div id="road-check" class="road-pane">
       <div class="screen-sub" style="margin-bottom:8px;">O que NÃO esquecer. Por integrante.</div>
@@ -449,7 +455,7 @@
 
   <div class="install-hint">🤘 <b>Dica:</b> no celular, menu do navegador → <b>"Adicionar à tela inicial"</b> pra virar app de verdade.</div>
   <div id="appFooter" onclick="footerTap()" style="text-align:center;padding:10px 16px 6px;font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;user-select:none;">
-    <span id="footerSync">⬜</span> <span id="footerVer">v2026-08-10.3</span> &middot; Quartel General
+    <span id="footerSync">⬜</span> <span id="footerVer">v2026-08-10.4</span> &middot; Quartel General
   </div>
 </main>
 
@@ -602,7 +608,11 @@ function backfillFase5(){
     if(sg.pos===undefined)sg.pos=POS_SEED[sg.name]||_posPorNome(sg.name)||"";
     if(sg.apelido===undefined)sg.apelido=APELIDO_SEED[sg.name]||_seedByName(APELIDO_SEED,sg.name)||"";
   });
-  (DB.audios||[]).forEach(a=>{if(a.apelido===undefined)a.apelido=APELIDO_SEED[a.name]||_seedByName(APELIDO_SEED,a.name)||"";});
+  (DB.audios||[]).forEach(a=>{
+    if(a.apelido===undefined)a.apelido=APELIDO_SEED[a.name]||_seedByName(APELIDO_SEED,a.name)||"";
+    // o "Só no Forevis" é o áudio que a banda usa pra afinar (dito pelo Junior em 10/08)
+    if(a.afina===undefined)a.afina=/forevis/i.test(a.name||"");
+  });
   // resolve blocos pré-preenchidos: nome da seed -> id real desta base
   (DB.blocos||[]).forEach(b=>{
     if(!Array.isArray(b.songIds))b.songIds=[];
@@ -726,8 +736,27 @@ function cancelConfirm(){_confirmCb=null;closeModal();}
 
 /* ============ 1. REPERTORIO + COLINHA ============ */
 let songFilter="all";
-function setSongFilter(f){songFilter=f;renderSongs();}
+function setSongFilter(f){songFilter=f;_recemMudou.clear();renderSongs();}
 function goRepFilter(f){songFilter=f;go('rep');renderSongs();}
+/* busca: casa por nome E por apelido, sem acento e sem ligar pra maiúscula */
+function _buscaVal(sel){const el=$(sel);return el?_norm(el.value||""):"";}
+function _casa(o,q){if(!q)return true;return _norm(o.name).indexOf(q)>=0||_norm(o.apelido||"").indexOf(q)>=0;}
+/* música que acabou de mudar de status continua visível mesmo saindo do filtro —
+   senão o card some debaixo do dedo na hora que você marca 🟢 */
+let _recemMudou=new Set();
+const _CICLO={yellow:"green",green:"red",red:"yellow"};
+function cicloStatus(sid){
+  const s=DB.songs.find(x=>x.id===sid);if(!s)return;
+  s.status=_CICLO[s.status]||"yellow";
+  _recemMudou.add(sid);
+  save();toast(STATUS[s.status].emoji+" "+STATUS[s.status].label);
+}
+function ensaieiHoje(sid){
+  const s=DB.songs.find(x=>x.id===sid);if(!s)return;
+  s.lastPlayed=daysFromNow(0);s.plays=(s.plays||0)+1;
+  _recemMudou.add(sid);
+  save();toast("🥁 "+s.name+" — ensaiada hoje");
+}
 function songFresh(s){
   if(!s.lastPlayed)return{txt:"sem registro",col:"var(--muted)",risk:false,never:true};
   const d=Math.floor((new Date(daysFromNow(0))-new Date(s.lastPlayed))/86400000);
@@ -770,6 +799,7 @@ function renderSongs(){
         +'<div style="font-family:var(--display);font-size:19px;letter-spacing:.5px;">🔊 '+esc(a.name)+'</div>'
         +'<div style="color:var(--muted);font-size:13px;font-family:var(--mono);margin-top:2px;">⏱ '+fmtTime(a.dur||0)+(a.who?' · solta: '+esc(a.who):'')+(a.source?' · '+esc(a.source):'')+'</div>'
         +(a.notes?'<div style="margin-top:6px;font-size:13px;color:var(--amber);">📌 '+esc(a.notes)+'</div>':'')
+        +(a.afina?'<div style="margin-top:6px;"><span class="pill" style="border-color:var(--lime);color:var(--lime);">🎸 serve pra afinar</span></div>':'')
         +'</div><div class="row" style="gap:6px;"><button class="iconbtn" onclick="openAudio(\''+a.id+'\')">✏️</button><button class="iconbtn" onclick="delAudio(\''+a.id+'\')">🗑️</button></div></div></div>').join("")
         :'<div class="empty"><div class="big">SEM ÁUDIO</div>Cadastra as vinhetas e intros 🔊</div>');
     return;
@@ -781,7 +811,8 @@ function renderSongs(){
     <div class="qg-head" style="color:var(--red);">⚠️ RISCO DE ESQUECIMENTO</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Músicas paradas faz tempo. Bota no próximo ensaio antes que vire vexame.</div>
     ${risco.slice(0,8).map(o=>`<div class="row between" style="padding:5px 0;border-bottom:1px solid var(--line);"><span style="font-weight:600;">${esc(o.s.name)}</span><span style="font-size:12px;color:${o.f.col};font-family:var(--mono);">${o.f.d}d</span></div>`).join("")}</div>`:"";
-  const lista=songFilter==="all"?DB.songs:DB.songs.filter(s=>s.status===songFilter);
+  const q=_buscaVal("#repBusca");
+  const lista=DB.songs.filter(s=>_casa(s,q)&&(songFilter==="all"||s.status===songFilter||_recemMudou.has(s.id)));
   const cards=lista.map(sg=>{
     const st=STATUS[sg.status];const tags=(sg.tags||[]).map(t=>`<span class="pill tagx">${esc(t)}</span>`).join("");
     const cola=[sg.tom&&`Tom ${esc(sg.tom)}`,sg.bpm&&`${esc(sg.bpm)} BPM`,sg.singer&&`Canta: ${esc(sg.singer)}`].filter(Boolean).join(" · ");
@@ -793,9 +824,9 @@ function renderSongs(){
       </div><div class="row" style="gap:6px;">
         ${hasAudio?`<button class="iconbtn" onclick="openPlayer('${sg.id}')" title="Tocar MP3 + letra" style="border-color:var(--lime);">▶️</button>`:(sg.lyrics?`<button class="iconbtn" onclick="openLyrics('${sg.id}')" title="Ver letra">📄</button>`:'')}
         ${sg.link?`<a class="iconbtn" href="${esc(sg.link)}" target="_blank" style="text-decoration:none;" title="Link externo">🔗</a>`:''}
-        <button class="iconbtn" onclick="openSong('${sg.id}')">✏️</button><button class="iconbtn" onclick="delSong('${sg.id}')">🗑️</button>
+        <button class="iconbtn" title="Ensaiei hoje" onclick="ensaieiHoje('${sg.id}')">🥁</button><button class="iconbtn" onclick="openSong('${sg.id}')">✏️</button>
       </div></div>
-      <div class="row wrap" style="gap:6px;margin-top:10px;"><span class="pill ${st.cls}">${st.emoji} ${st.label}</span>${tags}${hasAudio?'<span class="pill green">🎧 MP3</span>':''}${(()=>{const a=AFIN[sg.afin]||AFIN.e;return '<span class="pill" style="border-color:'+a.cor+';color:'+a.cor+';">🎸 '+a.curto+'</span>';})()}<span class="pill tagx">⚡ ${Math.min(5,Math.max(1,+sg.energia||3))}/5</span>${sg.pos?`<span class="pill tagx">⏱️ ${esc(POS[sg.pos]||sg.pos)}</span>`:''}${(DB.blocos||[]).filter(b=>(b.songIds||[]).includes(sg.id)).map(b=>'<span class="pill" style="border-color:'+b.cor+';color:'+b.cor+';">'+b.emoji+' '+esc(b.nome)+'</span>').join("")}</div>
+      <div class="row wrap" style="gap:6px;margin-top:10px;"><span class="pill ${st.cls}" style="cursor:pointer;" title="Toca pra mudar o status" onclick="cicloStatus('${sg.id}')">${st.emoji} ${st.label}</span>${tags}${hasAudio?'<span class="pill green">🎧 MP3</span>':''}${(()=>{const a=AFIN[sg.afin]||AFIN.e;return '<span class="pill" style="border-color:'+a.cor+';color:'+a.cor+';">🎸 '+a.curto+'</span>';})()}<span class="pill tagx">⚡ ${Math.min(5,Math.max(1,+sg.energia||3))}/5</span>${sg.pos?`<span class="pill tagx">⏱️ ${esc(POS[sg.pos]||sg.pos)}</span>`:''}${(DB.blocos||[]).filter(b=>(b.songIds||[]).includes(sg.id)).map(b=>'<span class="pill" style="border-color:'+b.cor+';color:'+b.cor+';">'+b.emoji+' '+esc(b.nome)+'</span>').join("")}</div>
       <div style="margin-top:8px;font-size:11.5px;color:${f.col};font-family:var(--mono);">⏳ ${f.txt}${sg.plays?` · tocada ${sg.plays}x`:''}</div>
       ${sg.notes?`<div style="margin-top:6px;font-size:13px;color:var(--amber);">📌 ${esc(sg.notes)}</div>`:''}
     </div>`;
@@ -955,12 +986,14 @@ function openAudio(aid){
     +'<div class="field"><label class="fld">Quem solta</label><input id="a_who" value="'+esc(a.who||"")+'" placeholder="Ex: Junior"></div>'
     +'<div class="field"><label class="fld">De onde sai</label><input id="a_source" value="'+esc(a.source||"")+'" placeholder="Ex: celular no cabo P2 da mesa"></div>'
     +'<div class="field"><label class="fld">Nota / cue</label><input id="a_notes" value="'+esc(a.notes||"")+'" placeholder="Ex: corta seco quando a guitarra entrar"></div>'
+    +'<label class="chk" style="margin-bottom:12px;"><input type="checkbox" id="a_afina"'+(a.afina?" checked":"")+'> 🎸 Serve pra AFINAR — cobre troca de afinação</label>'
+    +'<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Marcado, o app para de reclamar de troca de afinação quando este áudio estiver antes do bloco, e passa a sugerir ele.</div>'
     +'<button class="btn primary full" onclick="saveAudio(\''+(aid||"")+'\')">SALVAR</button>'
     +(aid?'<button class="btn ghost full sm" style="margin-top:8px;" onclick="delAudio(\''+aid+'\')">🗑️ Apagar áudio</button>':""));
 }
 function saveAudio(aid){
   const name=($("#a_name").value||"").trim();if(!name){toast("Bota um nome, cuca!");return;}
-  const data={name,dur:(+$("#a_min").value||0)*60+(+$("#a_sec").value||0),who:($("#a_who").value||"").trim(),source:($("#a_source").value||"").trim(),notes:($("#a_notes").value||"").trim()};
+  const data={name,dur:(+$("#a_min").value||0)*60+(+$("#a_sec").value||0),who:($("#a_who").value||"").trim(),source:($("#a_source").value||"").trim(),notes:($("#a_notes").value||"").trim(),afina:!!($("#a_afina")&&$("#a_afina").checked)};
   if(aid)Object.assign(findAudio(aid),data);else DB.audios.push({id:id(),...data});
   closeModal();save();toast("Áudio salvo 🔊");
 }
@@ -971,7 +1004,7 @@ function delAudio(aid){showConfirm("Apagar esse áudio? Ele sai dos setlists tam
 // converte 1 música em áudio preservando a posição em todos os setlists
 function _convSongToAudio(sid){
   const s=(DB.songs||[]).find(x=>x.id===sid);if(!s)return null;
-  const na={id:id(),name:s.name,dur:s.dur||0,who:"",source:"",notes:s.notes||""};
+  const na={id:id(),name:s.name,dur:s.dur||0,who:"",source:"",notes:s.notes||"",apelido:s.apelido||"",afina:/forevis/i.test(s.name||"")};
   DB.audios.push(na);
   (DB.setlists||[]).forEach(sl=>{
     sl.songs=sl.songs.map(i=>i===sid?AUDP+na.id:i);
@@ -1081,23 +1114,35 @@ function doInsertBloco(){
 function raioXHtml(c){
   const ids=(c.songs||[]).filter(i=>itemObj(i));
   if(ids.length<2)return"";
+  /* escala NÃO-linear: o pico tem que saltar aos olhos, não crescer de pouquinho */
+  const ALT={1:10,2:25,3:46,4:72,5:100},H=84;
   const bars=ids.map(iid=>{
-    if(isAud(iid))return '<div style="flex:1 1 0;min-width:3px;height:38px;display:flex;align-items:flex-end;"><div style="width:100%;height:8px;background:repeating-linear-gradient(45deg,var(--muted),var(--muted) 2px,transparent 2px,transparent 4px);border-radius:2px;" title="áudio"></div></div>';
+    if(isAud(iid))return '<div style="flex:1 1 0;min-width:4px;height:'+H+'px;display:flex;align-items:flex-end;"><div style="width:100%;height:9px;background:repeating-linear-gradient(45deg,var(--muted),var(--muted) 2px,transparent 2px,transparent 4px);border-radius:2px;" title="áudio"></div></div>';
     const s=itemObj(iid);const en=Math.min(5,Math.max(1,+s.energia||3));const a=AFIN[s.afin]||AFIN.e;
-    return '<div style="flex:1 1 0;min-width:3px;height:38px;display:flex;align-items:flex-end;"><div style="width:100%;height:'+(en*20)+'%;background:'+a.cor+';border-radius:2px;" title="'+esc(s.name)+' · energia '+en+' · '+a.lbl+'"></div></div>';
+    const pico=en>=5;
+    return '<div style="flex:1 1 0;min-width:4px;height:'+H+'px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;" title="'+esc(s.name)+' · energia '+en+' · '+a.lbl+'">'
+      +(pico?'<div style="font-size:9px;line-height:1;color:'+a.cor+';margin-bottom:1px;">▲</div>':'')
+      +'<div style="width:100%;height:'+ALT[en]+'%;background:'+a.cor+';border-radius:2px 2px 0 0;'
+      +(pico?'box-shadow:0 0 8px '+a.cor+';':'opacity:'+(.5+en*.1).toFixed(2)+';')+'"></div></div>';
   }).join("");
   const leg=Object.keys(AFIN).map(k=>'<span style="font-size:10px;color:var(--muted);"><span style="display:inline-block;width:8px;height:8px;background:'+AFIN[k].cor+';border-radius:2px;"></span> '+AFIN[k].curto+'</span>').join(" ");
   return '<div class="card" style="padding:10px 12px;margin-bottom:10px;">'
-    +'<div class="qg-head" style="margin-bottom:6px;">📈 RAIO-X DO SHOW</div>'
-    +'<div class="row" style="gap:2px;align-items:flex-end;">'+bars+'</div>'
-    +'<div class="row" style="gap:10px;margin-top:6px;">'+leg+'</div></div>';
+    +'<div class="qg-head" style="margin-bottom:8px;">📈 RAIO-X DO SHOW</div>'
+    +'<div style="position:relative;">'
+    +'<div style="position:absolute;inset:0;pointer-events:none;border-top:1px dashed rgba(255,255,255,.10);border-bottom:1px solid rgba(255,255,255,.10);"></div>'
+    +'<div class="row" style="gap:2px;align-items:flex-end;">'+bars+'</div></div>'
+    +'<div class="row between" style="margin-top:6px;"><div class="row" style="gap:10px;">'+leg+'</div>'
+    +'<span style="font-size:10px;color:var(--muted);">▲ pico ⚡5</span></div></div>';
 }
 function setFlags(c){
   const out=[];const ids=(c.songs||[]).filter(i=>itemObj(i));
   const songsOnly=ids.filter(i=>!isAud(i)).map(i=>itemObj(i));
+  /* posição = o número que aparece na tela (só música conta), não o índice do
+     array — senão a bandeirinha aponta uma linha diferente da que o Junior lê. */
+  const numDe={};let _n=0;ids.forEach(iid=>{if(!isAud(iid))numDe[iid]=++_n;});
   // trocas de afinação
   let trocas=0,ondes=[];let prev=null;
-  ids.forEach((iid,i)=>{if(isAud(iid))return;const s=itemObj(iid);if(prev&&prev!==s.afin){trocas++;ondes.push(i+1);}prev=s.afin;});
+  ids.forEach(iid=>{if(isAud(iid))return;const s=itemObj(iid);if(prev&&prev!==s.afin){trocas++;ondes.push(numDe[iid]);}prev=s.afin;});
   if(trocas>=4)out.push("🚩 "+trocas+" trocas de afinação nesse show (posições "+ondes.join(", ")+") — tenta o otimizar afinação");
   // 3 de energia baixa seguidas
   for(let i=0;i+2<songsOnly.length;i++){
@@ -1116,9 +1161,29 @@ function setFlags(c){
     const ant=i>0?ids[i-1]:null;
     if(s.afin==="b"){
       if(ant&&isEmenda(c,ant))out.push("🚩 "+s.name+" é em B (guitarra dedicada) e vem colada numa emenda — não dá tempo de trocar");
-      else out.push("🎸 "+s.name+" é em B: troca de guitarra na posição "+(i+1));
+      else out.push("🎸 "+s.name+" é em B: troca de guitarra na posição "+numDe[iid]);
     }
-    if(hasCue(c,iid,"🎸")&&ant&&isEmenda(c,ant))out.push("🚩 troca de instrumento colada numa emenda na posição "+(i+1));
+    if(hasCue(c,iid,"🎸")&&ant&&isEmenda(c,ant))out.push("🚩 troca de instrumento colada numa emenda na posição "+numDe[iid]);
+  });
+  /* TROCA DE AFINAÇÃO PRECISA DE TEMPO COBERTO.
+     A banda afina durante o áudio (o "Só no Forevis" existe pra isso) ou durante
+     uma interação do Índio. Trocar de afinação no silêncio entre duas músicas —
+     ou pior, numa emenda — é o que trava o show. */
+  const afinadores=(DB.audios||[]).filter(a=>a.afina);
+  const dica=afinadores.length?(" — o "+afinadores[0].name+" serve"):" — põe um áudio ou uma interação antes";
+  ids.forEach((iid,i)=>{
+    if(isAud(iid))return;
+    const s=itemObj(iid);
+    let j=i-1;while(j>=0&&isAud(ids[j]))j--;
+    if(j<0)return;
+    const antS=itemObj(ids[j]);
+    if(!antS||antS.afin===s.afin)return;
+    const nova=(AFIN[s.afin]||AFIN.e).curto;
+    const emMeio=ids.slice(j+1,i);
+    const temAudio=emMeio.some(x=>isAud(x));
+    const temParada=hasCue(c,ids[j],"🎙️")||hasCue(c,ids[j],"⏸️")||hasCue(c,ids[j],"📣")||emMeio.some(x=>hasCue(c,x,"🎙️"));
+    if(isEmenda(c,ids[i-1]))out.push("🚩 "+s.name+" entra EMENDADA e muda pra "+nova+" — não dá tempo de afinar");
+    else if(!temAudio&&!temParada)out.push("🚩 entra "+nova+" na "+numDe[iid]+" ("+s.name+") sem cobertura pra afinar"+dica);
   });
   // risco de esquecimento
   const risco=songsOnly.filter(s=>songFresh(s).risk);
@@ -1142,10 +1207,12 @@ function _propostaAfinacao(c){
   if(nova.join("|")===ids.join("|"))return null;
   return nova;
 }
+function _audioAfinador(){return (DB.audios||[]).find(a=>a.afina)||null;}
 function otimizarAfinacao(){
   const c=curSet();if(!c)return;
   const nova=_propostaAfinacao(c);
   if(!nova){toast("Já tá agrupado — nada pra otimizar 👍");return;}
+  const afinador=_audioAfinador();
   const linha=arr=>arr.filter(i=>itemObj(i)).map((i,k)=>{const s=itemObj(i);const dd=!isAud(i)&&s.afin==="dropd";
     return '<div style="font-size:12.5px;padding:2px 0;'+(dd?"color:"+AFIN.dropd.cor+";font-weight:700;":"")+'">'+(k+1)+". "+esc(s.name)+(dd?" (DROP D)":"")+'</div>';}).join("");
   showModal('<h3>🎸 Otimizar Afinação</h3>'
@@ -1153,10 +1220,40 @@ function otimizarAfinacao(){
     +'<div class="row" style="gap:10px;align-items:flex-start;">'
     +'<div class="grow" style="min-width:0;"><div class="fld">ANTES</div>'+linha(c.songs)+'</div>'
     +'<div class="grow" style="min-width:0;"><div class="fld" style="color:var(--lime);">DEPOIS</div>'+linha(nova)+'</div></div>'
+    +'<div style="border-top:1px dashed var(--line);margin-top:12px;padding-top:10px;">'
+    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">Entrar num bloco Drop D sem cobertura obriga a afinar no silêncio. Dá pra resolver junto:</div>'
+    +(afinador?'<label class="chk"><input type="checkbox" id="oa_audio" checked> 🔊 Pôr o <b>'+esc(afinador.name)+'</b> antes do bloco (afina durante o áudio)</label>':'')
+    +'<label class="chk"><input type="checkbox" id="oa_inter"'+(afinador?'':' checked')+'> 🎙️ Marcar <b>interação</b> na música antes do bloco</label></div>'
     +'<button class="btn primary full" style="margin-top:12px;" onclick="aplicarAfinacao()">ACEITAR ESSA ORDEM</button>'
     +'<button class="btn ghost full sm" style="margin-top:8px;" onclick="closeModal()">Deixa como está</button>');
 }
-function aplicarAfinacao(){const c=curSet();if(!c)return;const nova=_propostaAfinacao(c);if(!nova){closeModal();return;}c.songs=nova;closeModal();save();toast("Afinação agrupada 🎸");}
+function aplicarAfinacao(){
+  const c=curSet();if(!c)return;
+  const nova=_propostaAfinacao(c);if(!nova){closeModal();return;}
+  const porAudio=!!($("#oa_audio")&&$("#oa_audio").checked);
+  const porInter=!!($("#oa_inter")&&$("#oa_inter").checked);
+  c.songs=nova;
+  // 1º item do bloco Drop D depois da reordenação
+  const k=c.songs.findIndex(i=>!isAud(i)&&(itemObj(i)||{}).afin==="dropd");
+  const extras=[];
+  if(k>0){
+    const antes=c.songs[k-1];
+    if(porInter&&antes&&!isAud(antes)){
+      const ban=cueByEmoji("🎙️");
+      if(ban){const e=cueOf(c,antes);if(e.marks.indexOf(ban.id)<0){e.marks.push(ban.id);if(!e.txt[ban.id])e.txt[ban.id]="Interação · tempo pra afinar";extras.push("interação");}}
+    }
+    const af=_audioAfinador();
+    if(porAudio&&af){
+      const iid=AUDP+af.id;
+      const j=c.songs.indexOf(iid);if(j>=0)c.songs.splice(j,1);
+      const kk=c.songs.findIndex(i=>!isAud(i)&&(itemObj(i)||{}).afin==="dropd");
+      c.songs.splice(kk,0,iid);
+      extras.push(af.name);
+    }
+  }
+  closeModal();save();
+  toast("Afinação agrupada 🎸"+(extras.length?" + "+extras.join(" + "):""));
+}
 function toggleSetTipo(){const c=curSet();if(!c)return;c.tipo=c.tipo==="ensaio"?"show":"ensaio";save();}
 
 /* ============ 2. SETLIST ============ */
@@ -1214,12 +1311,13 @@ function renderSet(){
       +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Toca na linha pra marcar emenda/banter · segura o <b>⠿</b> e arrasta pra reordenar · toca no <b>número</b> pra mandar pro topo, pro fim ou pra uma posição.</div>'
       +'<div id="setRows">'+linhas+'</div>')
     :'<div class="empty">Setlist vazio. Escolhe embaixo 👇</div>';
-  $("#setPool").innerHTML=DB.songs.map(s=>{const inSet=cur.songs.includes(s.id);const st=STATUS[s.status];const a=AFIN[s.afin]||AFIN.e;
+  const qp=_buscaVal("#poolBusca");
+  $("#setPool").innerHTML=DB.songs.filter(s=>_casa(s,qp)).map(s=>{const inSet=cur.songs.includes(s.id);const st=STATUS[s.status];const a=AFIN[s.afin]||AFIN.e;
     return `<div class="card" style="padding:10px 12px;opacity:${inSet?.4:1};" onclick="${inSet?'':`toSet('${s.id}')`}"><div class="row between">
       <div class="row grow" style="gap:8px;min-width:0;"><span>${st.emoji}</span><span style="font-weight:600;">${esc(s.name)}</span><span style="color:var(--muted);font-family:var(--mono);font-size:12px;">${fmtTime(s.dur)}</span><span style="color:${a.cor};font-family:var(--mono);font-size:11px;">${a.curto}</span></div>
       <span style="color:var(--lime);font-weight:700;">${inSet?"✓ no set":"+ add"}</span></div></div>`;}).join("")
     +((DB.audios||[]).length?'<div class="divider"></div><div class="screen-sub" style="margin-bottom:8px;">ÁUDIOS 🔊</div>'
-      +(DB.audios||[]).map(a=>{const inSet=cur.songs.includes(AUDP+a.id);
+      +(DB.audios||[]).filter(a=>_casa(a,qp)).map(a=>{const inSet=cur.songs.includes(AUDP+a.id);
       return '<div class="card" style="padding:10px 12px;opacity:'+(inSet?.4:1)+';border-color:var(--amber);" onclick="'+(inSet?'':"toSetAudio('"+a.id+"')")+'"><div class="row between">'
         +'<div class="row grow" style="gap:8px;min-width:0;"><span>🔊</span><span style="font-weight:600;">'+esc(a.name)+'</span><span style="color:var(--muted);font-family:var(--mono);font-size:12px;">'+fmtTime(a.dur||0)+'</span></div>'
         +'<span style="color:var(--amber);font-weight:700;">'+(inSet?"✓ no set":"+ add")+'</span></div></div>';}).join(""):"");
@@ -1384,6 +1482,7 @@ function folhaPalcoHTML(SHOW,nomeArq){
 +'.musica.sp{background:#d8d8d8;border-radius:3px;padding-right:.25em}'
 +'.num{display:inline-block;min-width:1.62em;text-indent:0;padding-right:.1em}'
 +'.mp3{font-size:.5em;font-weight:900;letter-spacing:.5px;vertical-align:.12em}'
++'.tom{font-size:.5em;font-weight:900;letter-spacing:.5px;border:2px solid #000;border-radius:3px;padding:0 .3em;margin-left:.3em;vertical-align:.14em}'
 +'.nota{display:block;font-size:.42em;font-weight:700;text-transform:none;color:#333;letter-spacing:.2px;line-height:1.25;text-indent:0;margin:-.1em 0 .25em 0;font-family:"Arial",sans-serif}'
 +'.rodape{position:relative;z-index:1;display:flex;justify-content:center;align-items:center;font-size:10.5px;letter-spacing:3px;text-transform:uppercase;border-top:2px solid #000;margin-top:3.5mm;padding-top:2mm;font-family:"Arial Black",Arial,sans-serif}'
 +'</style></head><body><div class="page"><div class="watermark"></div>'
@@ -1402,6 +1501,7 @@ function folhaPalcoHTML(SHOW,nomeArq){
 +'const h=document.createElement("h2");h.textContent=b.label;bd.appendChild(h);'
 +'(b.itens||[]).forEach(m=>{if(m.interacao)return;const p=document.createElement("div");p.className="musica"+(m.sp?" sp":"");'
 +'let s=\'<span class="num">\'+m.n+\'.</span>\'+esc(m.nome);if(m.mp3)s+=\' <span class="mp3">(MP3)</span>\';'
++'if(m.tom)s+=\' <span class="tom">\'+esc(m.tom)+\'</span>\';'
 +'if(m.nota)s+=\'<span class="nota">\'+esc(m.nota)+\'</span>\';p.innerHTML=s;bd.appendChild(p);});dest.appendChild(bd);});}'
 +'function cabe(px){cols.style.fontSize=px+"px";return colA.scrollHeight<=cols.clientHeight&&colB.scrollHeight<=cols.clientHeight'
 +'&&colA.scrollWidth<=colA.clientWidth+1&&colB.scrollWidth<=colB.clientWidth+1;}'
@@ -1555,9 +1655,13 @@ function _scoreSong(s, prio){
   if(prio==="ready")    return statusW*0.5 + recencyW*0.35 + playsW*0.15 + Math.random()*10;
   return 0;
 }
-function runSuggestSetlist(){
-  const targetSec = (+$("#sl_target_min").value || 45) * 60;
-  const prio = $("#sl_prio").value || "balanced";
+/* "Gerar outro" roda depois que o modal original já morreu — por isso os
+   parâmetros vêm por argumento, não lidos de #sl_target_min / #sl_prio. */
+function gerarOutro(targetSec,prio){runSuggestSetlist(targetSec,prio);}
+function runSuggestSetlist(targetSecArg,prioArg){
+  const el=$("#sl_target_min"),pe=$("#sl_prio");
+  const targetSec = (targetSecArg!==undefined&&targetSecArg!==null)?targetSecArg:((+(el&&el.value) || 45) * 60);
+  const prio = prioArg||((pe&&pe.value)||"balanced");
 
   // Pontuar e ordenar
   const scored = DB.songs
@@ -1614,7 +1718,7 @@ function _showSetlistPreview(songs, targetSec, prio){
     </div>
     <div style="max-height:320px;overflow-y:auto;margin-bottom:14px;">${rows}</div>
     <div style="display:flex;gap:8px;">
-      <button class="btn ghost grow" onclick="runSuggestSetlist()">🔄 Gerar outro</button>
+      <button class="btn ghost grow" onclick="gerarOutro(${targetSec},'${prio}')">🔄 Gerar outro</button>
       <button class="btn yellow grow" onclick="_createSuggestedSetlist()">✅ Criar este</button>
     </div>
   `);
@@ -1637,11 +1741,9 @@ function openSetlistEdit(sid){curSetId=sid;renderSet();try{window.scrollTo(0,0);
 function closeSetlistEdit(){curSetId=null;renderSet();}
 function renameSetlist(sid){const s=DB.setlists.find(x=>x.id===sid);if(!s)return;showModal(`<h3>Renomear Setlist</h3><div class="field"><label class="fld">Nome</label><input id="sl_rename" value="${esc(s.name)}"></div><button class="btn primary full" onclick="doRename('${sid}')">SALVAR</button>`);}
 function doRename(sid){const s=DB.setlists.find(x=>x.id===sid);if(!s)return;s.name=$("#sl_rename").value.trim()||s.name;closeModal();save();}
-function dupSetlist(sid){const s=DB.setlists.find(x=>x.id===sid);if(!s)return;DB.setlists.push({id:id(),name:s.name+" (cópia)",songs:[...s.songs],notes:s.notes||"",ts:Date.now()});save();toast("Setlist duplicado ⧉");}
+function dupSetlist(sid){const s=DB.setlists.find(x=>x.id===sid);if(!s)return;DB.setlists.push({id:id(),name:s.name+" (cópia)",songs:[...s.songs],notes:s.notes||"",ts:Date.now(),tipo:s.tipo||"show",cueMap:JSON.parse(JSON.stringify(s.cueMap||{}))});save();toast("Setlist duplicado com as marcações ⧉");}
 function delSetlist(sid){const s=DB.setlists.find(x=>x.id===sid);if(!s)return;showConfirm(`Apagar o setlist "${s.name}"?`,()=>{DB.setlists=DB.setlists.filter(x=>x.id!==sid);if(curSetId===sid)curSetId=null;save();});}
 function toSet(sid){const c=curSet();if(c&&!c.songs.includes(sid)){c.songs.push(sid);save();}}
-function fromSet(i){const c=curSet();if(c){const iid=c.songs[i];c.songs.splice(i,1);if(c.cueMap&&!c.songs.includes(iid))delete c.cueMap[iid];save();}}
-function moveSet(i,d){const c=curSet();if(!c)return;const j=i+d;if(j<0||j>=c.songs.length)return;[c.songs[i],c.songs[j]]=[c.songs[j],c.songs[i]];save();}
 function clearSet(){const c=curSet();if(!c||!c.songs.length)return;showConfirm("Limpar as músicas deste setlist?",()=>{c.songs=[];save();});}
 function markSetlistPlayed(){const c=curSet();const ms=setSongIds(c);if(!c||!ms.length){toast("Setlist vazio!");return;}showConfirm(`Marcar as ${ms.length} músicas como tocadas hoje?`,()=>{const t=daysFromNow(0);ms.forEach(sid=>{const s=DB.songs.find(x=>x.id===sid);if(s){s.lastPlayed=t;s.plays=(s.plays||0)+1;}});save();toast("Setlist marcado como tocado 🎵");});}
 function setText(){const c=curSet();if(!c)return"";
@@ -1714,12 +1816,17 @@ function ensRecStart(){if(!navigator.mediaDevices||!navigator.mediaDevices.getUs
   }).catch(err=>{console.error("Microfone:",err);toast("Permissão de microfone negada 🎤");});
 }
 function ensRecStop(){if(ensRec&&ensRecOn){try{ensRec.stop();}catch(e){}ensRecOn=false;const b=$("#ensRecBtn");if(b){b.textContent="🎤 Gravar Trecho";b.classList.remove("on");}}}
-function recSave(rid,blob){return idbOpen().then(db=>new Promise((res,rej)=>{const tx=db.transaction("rec","readwrite");tx.objectStore("rec").put({blob,ts:Date.now()},rid);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);}));}
-function recAll(){return idbOpen().then(db=>new Promise(res=>{const tx=db.transaction("rec","readonly");const q=tx.objectStore("rec").openCursor();const out=[];q.onsuccess=e=>{const c=e.target.result;if(c){out.push({id:c.key,blob:c.value.blob,ts:c.value.ts});c.continue();}else res(out);};q.onerror=()=>res([]);}));}
+/* grava junto o NOME da música selecionada — antes salvava só a hora e
+   ninguém mais descobria do que era aquele trecho. */
+function recSave(rid,blob){const sg=DB.songs.find(x=>x.id===ensSongId);const musica=sg?sg.name:"";
+  return idbOpen().then(db=>new Promise((res,rej)=>{const tx=db.transaction("rec","readwrite");tx.objectStore("rec").put({blob,ts:Date.now(),musica},rid);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);}));}
+function recAll(){return idbOpen().then(db=>new Promise(res=>{const tx=db.transaction("rec","readonly");const q=tx.objectStore("rec").openCursor();const out=[];q.onsuccess=e=>{const c=e.target.result;if(c){out.push({id:c.key,blob:c.value.blob,ts:c.value.ts,musica:c.value.musica||""});c.continue();}else res(out);};q.onerror=()=>res([]);}));}
 function recDel(rid){return idbOpen().then(db=>new Promise(res=>{const tx=db.transaction("rec","readwrite");tx.objectStore("rec").delete(rid);tx.oncomplete=res;tx.onerror=res;}));}
+let _recUrls=[];
 function renderRecList(){recAll().then(list=>{const el=$("#ensRecList");if(!el)return;list.sort((a,b)=>b.ts-a.ts);
+  _recUrls.forEach(u=>{try{URL.revokeObjectURL(u);}catch(e){}});_recUrls=[];
   el.innerHTML=list.length?list.map(r=>{const url=URL.createObjectURL(r.blob);const d=new Date(r.ts);const hh=`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-    return `<div class="ens-rec"><span style="flex:none;">🎙 ${hh}</span><audio controls src="${url}" style="height:34px;flex:1;min-width:0;"></audio><button class="iconbtn" style="flex:none;" onclick="recDel('${r.id}').then(renderRecList)">🗑️</button></div>`;}).join("")
+    _recUrls.push(url);return `<div class="ens-rec"><span style="flex:none;font-size:12px;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🎙 ${hh}${r.musica?" · "+esc(r.musica):""}</span><audio controls src="${url}" style="height:34px;flex:1;min-width:0;"></audio><button class="iconbtn" style="flex:none;" onclick="recDel('${r.id}').then(renderRecList)">🗑️</button></div>`;}).join("")
     :'<div style="color:var(--muted);font-size:13px;margin-top:10px;">Nenhuma gravação ainda. Aperta o botão e manda ver. 🎤</div>';
 });}
 
@@ -1836,7 +1943,7 @@ function renderShame(){
   $("#shameLog").innerHTML=DB.shameLog.length?DB.shameLog.slice(0,12).map(l=>`<div class="row between" style="padding:8px 0;border-bottom:1px solid var(--line);"><div><b>${esc(l.member)}</b> <span style="color:var(--muted);">— ${esc(l.reason)}</span></div><span style="font-size:11px;color:var(--muted);font-family:var(--mono);">${new Date(l.ts).toLocaleDateString("pt-BR")}</span></div>`).join(""):'<div class="empty" style="padding:14px;">Ninguém vacilou. Por enquanto.</div>';
   renderCofre();
 }
-function bump(mid,d){DB.shame[mid]=Math.max(0,(DB.shame[mid]||0)+d);save();}
+function bump(mid,d){const antes=DB.shame[mid]||0;DB.shame[mid]=Math.max(0,antes+d);const m=DB.members.find(x=>x.id===mid);if(m&&DB.shame[mid]>antes)DB.shameLog.unshift({member:m.name,reason:"vacilo avulso",ts:Date.now()});save();}
 function pickExcuse(b){pickedExcuse=b.dataset.ex;$$("#excuseChips .chip").forEach(c=>c.classList.toggle("sel",c===b));}
 function logShame(){const mid=$("#shameWho").value;const m=DB.members.find(x=>x.id===mid);if(!m)return;DB.shame[mid]=(DB.shame[mid]||0)+1;DB.shameLog.unshift({member:m.name,reason:pickedExcuse||"Vacilo genérico",ts:Date.now()});pickedExcuse="";save();toast("🔨 +1 vergonha!");}
 function resetShame(){showConfirm("Zerar o placar?",()=>{DB.shame={};DB.shameLog=[];save();});}
@@ -1874,7 +1981,7 @@ function saveMember(mid){
   }
   closeModal();save();toast(mid?"Integrante atualizado 🤘":"Soldado adicionado ao quartel 🤘");
 }
-function delMember(mid){showConfirm("Remover este integrante?\nIsso some o histórico de multas e prontidão dele também.",()=>{DB.members=DB.members.filter(x=>x.id!==mid);delete DB.shame[mid];delete DB.equipment[mid];DB.fineLog=DB.fineLog.filter(f=>f.memberId!==mid);closeModal();save();});}
+function delMember(mid){showConfirm("Remover este integrante?\nIsso some o histórico de multas e prontidão dele também.",()=>{DB.members=DB.members.filter(x=>x.id!==mid);delete DB.shame[mid];delete DB.equipment[mid];DB.fineLog=DB.fineLog.filter(f=>f.memberId!==mid);if(Array.isArray(DB.racha&&DB.racha.who))DB.racha.who=DB.racha.who.filter(x=>x!==mid);(DB.events||[]).forEach(e=>{if(e.rsvp)delete e.rsvp[mid];});(DB.gigs||[]).forEach(g=>{if(Array.isArray(g.participants))g.participants=g.participants.filter(x=>x!==mid);});closeModal();save();});}
 /* cofre */
 function renderCofre(){
   $("#fineWho").innerHTML=DB.members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
@@ -1896,8 +2003,8 @@ function renderCofre(){
 function applyFine(rid){const r=DB.fineRules.find(x=>x.id===rid);const mid=$("#fineWho").value;const m=DB.members.find(x=>x.id===mid);if(!r||!m)return;
   const fine={id:id(),memberId:mid,label:r.label,amount:r.amount,ts:Date.now(),paid:false};
   DB.fineLog.unshift(fine);
-  // Lança automaticamente no caixa como entrada
-  DB.cash.push({id:id(),type:"in",desc:`⚖️ Multa: ${r.label} — ${m.name.split("/")[0]}`,amount:r.amount,ts:Date.now(),cat:"multa"});
+  /* NÃO lançar no caixa aqui: multa aplicada é dívida, não dinheiro.
+     O caixa só recebe quando o cofre é esvaziado (cofreToCaixa) — senão entra 2x. */
   save();
   toast(`⚖️ SENTENÇA EXECUTADA! ${money(r.amount)} do caba ${m.name.split("/")[0]} foi pro caixa! 🐷`);}
 function payFines(mid){DB.fineLog.forEach(f=>{if(f.memberId===mid&&!f.paid)f.paid=true;});save();toast("Pago! Foi pro cofre 💰");}
@@ -1908,6 +2015,17 @@ function saveFineRule(){const label=$("#fr_label").value.trim();const amount=+$(
 /* ============ 5. ESTRADA ============ */
 const COMMON_GEAR=["Cabo P10","Fonte","Multicabo","Extensão","Palhetas","Baquetas","Pedais","Afinador","Fita crepe","Carregador"];
 function roadTab(t){$$(".road-pane").forEach(p=>p.style.display="none");$("#road-"+t).style.display="block";$$("#roadSeg button").forEach(b=>b.classList.toggle("on",b.dataset.rt===t));}
+/* O rider técnico estava no banco desde sempre e NENHUMA tela lia — a função
+   antiga procurava um #riderText que não existe no HTML. Agora abre, edita e manda. */
+function openRider(){
+  showModal('<h3>🎛️ Rider Técnico</h3>'
+    +'<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Manda pro contratante ou pro técnico de som antes do show.</div>'
+    +'<textarea id="riderText" rows="14" style="font-family:var(--mono);font-size:12.5px;">'+esc(DB.rider||"")+'</textarea>'
+    +'<button class="btn primary full" style="margin-top:10px;" onclick="salvarRider()">SALVAR</button>'
+    +'<button class="btn wa full sm" style="margin-top:8px;" onclick="mandarRiderZap()">📲 MANDAR NO ZAP</button>');
+}
+function salvarRider(){DB.rider=$("#riderText").value;closeModal();save();toast("Rider salvo 🎛️");}
+function mandarRiderZap(){const t=$("#riderText").value||"";navigator.clipboard?.writeText(t).catch(()=>{});window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank");toast("Copiado + abrindo WhatsApp");}
 function renderRoad(){
   const me=currentMember();
   const allItems=DB.members.flatMap(m=>DB.equipment[m.id]||[]);
@@ -1952,7 +2070,6 @@ function addEqItem(mid,item){const arr=(DB.equipment[mid]=DB.equipment[mid]||[])
 function clearAllEq(){showConfirm("Desmarcar TODOS os itens?\nPra começar a conferência do zero.",()=>{DB.members.forEach(m=>(DB.equipment[m.id]||[]).forEach(it=>it.checked=false));save();toast("Tudo desmarcado, bora conferir 🎒");});}
 function toggleEq(mid,i){DB.equipment[mid][i].checked=!DB.equipment[mid][i].checked;save();}
 function delEq(mid,i){DB.equipment[mid].splice(i,1);save();}
-function copyRider(){navigator.clipboard?.writeText($("#riderText").value).then(()=>toast("Rider copiado!"));}
 function openVenue(vid){const v=vid?DB.venues.find(x=>x.id===vid):{name:"",type:"Motoclube",status:"Sondando",notes:""};const opts=VENUE_STATUS.map(s=>`<option ${v.status===s?'selected':''}>${s}</option>`).join("");
   showModal(`<h3>${vid?"Editar":"Nova"} Via Sacra</h3><div class="field"><label class="fld">Nome do local</label><input id="v_name" value="${esc(v.name)}" placeholder="Moto Clube / Bar..."></div><div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Tipo</label><input id="v_type" value="${esc(v.type)}"></div><div class="field grow"><label class="fld">Status</label><select id="v_status">${opts}</select></div></div><div class="field"><label class="fld">Anotações</label><textarea id="v_notes" rows="3" placeholder="Cachê, data, contato...">${esc(v.notes)}</textarea></div><button class="btn primary full" onclick="saveVenue('${vid||""}')">SALVAR</button>`);}
 function saveVenue(vid){const name=$("#v_name").value.trim();if(!name){toast("Nome do local!");return;}const data={name,type:$("#v_type").value.trim(),status:$("#v_status").value,notes:$("#v_notes").value.trim()};if(vid)Object.assign(DB.venues.find(x=>x.id===vid),data);else DB.venues.push({id:id(),...data});closeModal();save();}
@@ -2011,7 +2128,7 @@ function editCash(cid){const c=DB.cash.find(x=>x.id===cid);if(!c)return;const d=
 function pickCashType(t){$("#modalBox").dataset.ct=t;$$("#ec_type .chip").forEach(c=>c.classList.toggle("sel",c.dataset.t===t));}
 function saveCashEdit(cid){const c=DB.cash.find(x=>x.id===cid);if(!c)return;const desc=$("#ec_desc").value.trim(),amt=+$("#ec_amt").value;if(!desc||!amt){toast("Preenche tudo!");return;}c.desc=desc;c.amount=amt;c.type=$("#modalBox").dataset.ct;const dt=$("#ec_date").value;if(dt)c.ts=new Date(dt+"T12:00:00").getTime();closeModal();save();toast("Lançamento atualizado ✏️");}
 function delCash(cid){showConfirm("Apagar esse lançamento?",()=>{DB.cash=DB.cash.filter(x=>x.id!==cid);closeModal();save();});}
-function estornoBatch(b){showConfirm("Estornar TODO esse lançamento de uma vez?\\nCachê + repasses + gastos do mesmo show.",()=>{DB.cash=DB.cash.filter(x=>x.batch!==b);closeModal();save();toast("Lote estornado ↩️");});}
+function estornoBatch(b){showConfirm("Estornar TODO esse lançamento de uma vez?\nCachê + repasses + gastos do mesmo show.",()=>{DB.cash=DB.cash.filter(x=>x.batch!==b);closeModal();save();toast("Lote estornado ↩️");});}
 function openMerch(pid){const p=pid?DB.merch.find(x=>x.id===pid):{name:"",type:"Camiseta",status:"ideia",cost:0,price:0,stock:0,low:5};const opts=Object.entries(MERCH_STATUS).map(([k,v])=>`<option value="${k}" ${p.status===k?'selected':''}>${v.l}</option>`).join("");
   showModal(`<h3>${pid?"Editar":"Novo"} Produto</h3><div class="field"><label class="fld">Nome</label><input id="p_name" value="${esc(p.name)}"></div><div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Tipo</label><input id="p_type" value="${esc(p.type)}"></div><div class="field grow"><label class="fld">Status</label><select id="p_status">${opts}</select></div></div><div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Custo R$</label><input id="p_cost" type="number" step="0.01" value="${p.cost}"></div><div class="field grow"><label class="fld">Venda R$</label><input id="p_price" type="number" step="0.01" value="${p.price}"></div></div><div class="row" style="gap:10px;"><div class="field grow"><label class="fld">Estoque</label><input id="p_stock" type="number" value="${p.stock}"></div><div class="field grow"><label class="fld">Alerta abaixo de</label><input id="p_low" type="number" value="${p.low}"></div></div><div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Dica: pra mexer no estoque com lançamento no caixa, use os botões VENDER e REPOR. Esse campo de estoque é só pra correção manual.</div><button class="btn primary full" onclick="saveMerch('${pid||""}')">SALVAR</button>`);}
 function saveMerch(pid){const name=$("#p_name").value.trim();if(!name){toast("Nome!");return;}const data={name,type:$("#p_type").value.trim(),status:$("#p_status").value,cost:+$("#p_cost").value||0,price:+$("#p_price").value||0,stock:+$("#p_stock").value||0,low:+$("#p_low").value||0};if(pid)Object.assign(DB.merch.find(x=>x.id===pid),data);else DB.merch.push({id:id(),...data});closeModal();save();}
@@ -2030,7 +2147,7 @@ function delCombo(cid){showConfirm("Apagar combo?",()=>{DB.combos=DB.combos.filt
 /* ----- RACHA DO CACHÊ ----- */
 function renderRacha(){
   if($("#rachaCachet")&&document.activeElement!==$("#rachaCachet"))$("#rachaCachet").value=DB.racha.cachet||"";
-  if(!DB.racha.who||!DB.racha.who.length)DB.racha.who=DB.members.map(m=>m.id);
+  if(!Array.isArray(DB.racha.who)){DB.racha.who=DB.members.map(m=>m.id);} // só na 1ª vez — array vazio é escolha do usuário
   const mode=DB.racha.bandMode||"none";
   $("#rachaWho").innerHTML=DB.members.map(m=>`<button class="chip ${DB.racha.who.includes(m.id)?'sel':''}" onclick="toggleRachaWho('${m.id}')">${esc(m.name)}</button>`).join("");
   if($("#rachaBandMode"))$$("#rachaBandMode .chip").forEach(c=>c.classList.toggle("sel",c.dataset.bm===mode));
