@@ -450,7 +450,7 @@
 
   <div class="install-hint">🤘 <b>Dica:</b> no celular, menu do navegador → <b>"Adicionar à tela inicial"</b> pra virar app de verdade.</div>
   <div id="appFooter" onclick="footerTap()" style="text-align:center;padding:10px 16px 6px;font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;user-select:none;">
-    <span id="footerSync">⬜</span> <span id="footerVer">v2026-08-10.1</span> &middot; Quartel General
+    <span id="footerSync">⬜</span> <span id="footerVer">v2026-08-10.2</span> &middot; Quartel General
   </div>
 </main>
 
@@ -713,15 +713,22 @@ function toast(msg){const t=$("#toast");t.textContent=msg;t.classList.add("show"
 function go(s){$$(".screen").forEach(e=>e.classList.remove("active"));$("#s-"+s).classList.add("active");$$("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.s===s));window.scrollTo(0,0);}
 function showModal(html){$("#modalBox").innerHTML='<div class="modal-grip"></div>'+html;$("#modalBg").classList.add("open");}
 function closeModal(){const a=$("#modalBox audio");if(a){try{a.pause();}catch(e){}}$("#modalBg").classList.remove("open");}
+/* ⚠️ NÃO voltar a serializar o callback com onOk.toString() dentro do onclick.
+   Fazia a closure se perder (sid/c viravam undefined) e TODA ação destrutiva
+   falhava calada: apagar setlist, apagar música, limpar setlist, tocado hoje. */
+let _confirmCb=null;
 function showConfirm(msg,onOk,btnTxt){
   const label=(btnTxt||"CONFIRMAR");
-  showModal(`<div class="modal-grip"></div><h3 style="font-size:17px;margin-bottom:10px;">⚠️ Confirma aí</h3>
+  _confirmCb=(typeof onOk==="function")?onOk:null;
+  showModal(`<h3 style="font-size:17px;margin-bottom:10px;">⚠️ Confirma aí</h3>
     <p style="color:var(--muted);font-size:14px;line-height:1.55;margin-bottom:18px;white-space:pre-line;">${esc(msg)}</p>
     <div class="row" style="gap:10px;">
-      <button class="btn ghost grow" onclick="closeModal()">Cancelar</button>
-      <button class="btn danger grow" onclick="closeModal();(${onOk.toString()})();">${label}</button>
+      <button class="btn ghost grow" onclick="cancelConfirm()">Cancelar</button>
+      <button class="btn danger grow" onclick="doConfirm()">${label}</button>
     </div>`);
 }
+function doConfirm(){const cb=_confirmCb;_confirmCb=null;closeModal();if(cb)try{cb();}catch(e){toast("Deu ruim: "+e.message);}}
+function cancelConfirm(){_confirmCb=null;closeModal();}
 
 /* ============ 1. REPERTORIO + COLINHA ============ */
 let songFilter="all";
@@ -763,7 +770,8 @@ function renderSongs(){
   // aba de áudios — item próprio, fora da contagem de músicas
   if(songFilter==="audio"){
     const list=(DB.audios||[]);
-    el.innerHTML='<div class="card" style="padding:10px 12px;border-color:var(--amber);"><div style="font-size:12px;color:var(--muted);">Áudio soma na <b>duração</b> do show, não na contagem de músicas. O app só avisa no palco — quem opera solta do aparelho dele.</div></div>'
+    el.innerHTML='<div class="card" style="padding:10px 12px;border-color:var(--amber);"><div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Áudio soma na <b>duração</b> do show, não na contagem de músicas. O app só avisa no palco — quem opera solta do aparelho dele.</div>'
+      +'<button class="btn primary full sm" onclick="openAudioMigrate()">🔎 ACHAR MÚSICAS QUE SÃO ÁUDIO</button></div>'
       +(list.length?list.map(a=>'<div class="card"><div class="row between"><div class="grow" style="min-width:0;">'
         +'<div style="font-family:var(--display);font-size:19px;letter-spacing:.5px;">🔊 '+esc(a.name)+'</div>'
         +'<div style="color:var(--muted);font-size:13px;font-family:var(--mono);margin-top:2px;">⏱ '+fmtTime(a.dur||0)+(a.who?' · solta: '+esc(a.who):'')+(a.source?' · '+esc(a.source):'')+'</div>'
@@ -957,20 +965,51 @@ function delAudio(aid){showConfirm("Apagar esse áudio? Ele sai dos setlists tam
   DB.audios=DB.audios.filter(a=>a.id!==aid);
   (DB.setlists||[]).forEach(sl=>{sl.songs=sl.songs.filter(i=>i!==AUDP+aid);if(sl.cueMap)delete sl.cueMap[AUDP+aid];});
   closeModal();save();toast("Áudio apagado");});}
+// converte 1 música em áudio preservando a posição em todos os setlists
+function _convSongToAudio(sid){
+  const s=(DB.songs||[]).find(x=>x.id===sid);if(!s)return null;
+  const na={id:id(),name:s.name,dur:s.dur||0,who:"",source:"",notes:s.notes||""};
+  DB.audios.push(na);
+  (DB.setlists||[]).forEach(sl=>{
+    sl.songs=sl.songs.map(i=>i===sid?AUDP+na.id:i);
+    if(sl.cueMap&&sl.cueMap[sid]){sl.cueMap[AUDP+na.id]=sl.cueMap[sid];delete sl.cueMap[sid];}
+  });
+  DB.setlist=(DB.setlist||[]).map(i=>i===sid?AUDP+na.id:i);
+  (DB.blocos||[]).forEach(b=>{b.songIds=(b.songIds||[]).filter(x=>x!==sid);});
+  DB.songs=DB.songs.filter(x=>x.id!==sid);
+  audioDel(sid).then(()=>refreshAudioSet());
+  return na;
+}
 function songToAudio(sid){
   const s=(DB.songs||[]).find(x=>x.id===sid);if(!s)return;
-  showConfirm('"'+s.name+'" vira ÁUDIO. Sai da contagem de músicas e da saúde do repertório, mas continua nos setlists onde já está. Confirma?',()=>{
-    const na={id:id(),name:s.name,dur:s.dur||0,who:"",source:"",notes:s.notes||""};
-    DB.audios.push(na);
-    (DB.setlists||[]).forEach(sl=>{
-      sl.songs=sl.songs.map(i=>i===sid?AUDP+na.id:i);
-      if(sl.cueMap&&sl.cueMap[sid]){sl.cueMap[AUDP+na.id]=sl.cueMap[sid];delete sl.cueMap[sid];}
-    });
-    DB.setlist=(DB.setlist||[]).map(i=>i===sid?AUDP+na.id:i);
-    (DB.blocos||[]).forEach(b=>{b.songIds=b.songIds.filter(x=>x!==sid);});
-    DB.songs=DB.songs.filter(x=>x.id!==sid);
-    audioDel(sid).then(()=>refreshAudioSet());
-    closeModal();save();toast("Virou áudio 🔊");
+  showConfirm('"'+s.name+'" vira ÁUDIO. Sai da contagem de músicas e da saúde do repertório, mas continua nos setlists onde já está, na mesma posição. Confirma?',()=>{
+    _convSongToAudio(sid);save();toast("Virou áudio 🔊");
+  });
+}
+// acha músicas que na verdade são áudio (o que faz o contador do QG mentir)
+const _AUD_RX=/(^|\W)(intro|introdu|vinheta|audio|áudio|abertura|transi|passagem|chamada|encerra|efeito|sirene|spot|bg|trilha)/i;
+function _audCandidatos(){
+  return (DB.songs||[]).filter(s=>((s.tags||[]).indexOf("Áudio de Transição / MP3")>=0)||_AUD_RX.test(s.name||""));
+}
+function openAudioMigrate(){
+  const cand=_audCandidatos(),candIds=cand.map(s=>s.id);
+  const outras=(DB.songs||[]).filter(s=>candIds.indexOf(s.id)<0);
+  const chip=(s,on)=>'<button class="chip '+(on?"sel":"")+'" data-mg="'+s.id+'" onclick="this.classList.toggle(\'sel\')">'+esc(s.name)+' <span style="color:var(--muted);">'+fmtTime(s.dur||0)+'</span></button>';
+  showModal('<h3>🔎 Músicas que são áudio</h3>'
+    +'<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">É isto que faz o QG contar <b>53</b> quando são menos. Converter tira da contagem e da saúde do repertório, mas <b>mantém a posição em todos os setlists</b>.</div>'
+    +(cand.length?'<label class="fld">Achei estas — já marcadas</label><div class="chip-row" style="margin-bottom:14px;">'+cand.map(s=>chip(s,true)).join("")+'</div>'
+      :'<div style="font-size:12.5px;color:var(--amber);margin-bottom:12px;">Não achei nenhuma pelo nome. Marca na mão na lista abaixo.</div>')
+    +'<label class="fld">Resto do repertório — marca se faltou alguma</label><div class="chip-row" style="margin-bottom:14px;max-height:210px;overflow:auto;">'+outras.map(s=>chip(s,false)).join("")+'</div>'
+    +'<button class="btn primary full" onclick="doAudioMigrate()">CONVERTER AS MARCADAS</button>');
+}
+function doAudioMigrate(){
+  const ids=$$(".modal .chip.sel[data-mg]").map(c=>c.dataset.mg);
+  if(!ids.length){toast("Não marcou nenhuma");return;}
+  const nomes=ids.map(i=>{const s=(DB.songs||[]).find(x=>x.id===i);return s?s.name:"";}).filter(Boolean);
+  closeModal();
+  showConfirm(ids.length+" vira(m) ÁUDIO:\n\n"+nomes.join("\n")+"\n\nSaem da contagem de músicas e continuam nos setlists, na mesma posição.",()=>{
+    let ok=0;ids.forEach(i=>{if(_convSongToAudio(i))ok++;});
+    save();setSongFilter("audio");toast(ok+" viraram áudio 🔊");
   });
 }
 
@@ -1148,25 +1187,29 @@ function renderSet(){
     const chipRow=chips?'<div class="row wrap" style="gap:5px;margin-top:6px;">'+chips+'</div>':"";
     const emendaCss=emenda?"border-bottom-color:var(--yellow);margin-bottom:0;":"";
     const traco=emenda?'<div style="height:14px;margin:0 0 0 26px;border-left:3px solid var(--yellow);"></div><div style="font-size:10.5px;color:var(--yellow);margin:-14px 0 4px 34px;font-family:var(--mono);letter-spacing:1px;">🔗 EMENDA — NÃO PARA</div>':"";
+    const grip=`<button class="iconbtn grip" title="Segura e arrasta pra reordenar" style="touch-action:none;cursor:grab;" onpointerdown="dragStart(event)">⠿</button>`;
+    const del=`<button class="iconbtn" onclick="fromSetId('${iid}')">✕</button>`;
     if(isAud(iid)){
-      return `<div class="card" style="padding:9px 12px;margin-left:26px;border-color:var(--amber);${emendaCss}"><div class="row between">
+      return `<div class="set-item" data-iid="${iid}"><div class="card" style="padding:9px 12px;margin-left:26px;border-color:var(--amber);${emendaCss}"><div class="row between">
         <div class="row grow" style="gap:10px;min-width:0;cursor:pointer;" onclick="openCuePanel('${iid}')">
-          <div style="font-size:17px;width:20px;flex:none;">🔊</div>
+          <div style="font-size:17px;width:20px;flex:none;" onclick="event.stopPropagation();openMoveTo('${iid}')">🔊</div>
           <div class="grow" style="min-width:0;"><div style="font-family:var(--display);font-size:15px;color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(o.name)}</div>
           <div style="font-size:11px;color:var(--muted);font-family:var(--mono);">ÁUDIO · ${fmtTime(o.dur||0)}${o.who?' · solta: '+esc(o.who):''}${o.source?' · '+esc(o.source):''}</div>${chipRow}</div></div>
-        <div class="row" style="gap:4px;"><button class="iconbtn" onclick="moveSet(${i},-1)">▲</button><button class="iconbtn" onclick="moveSet(${i},1)">▼</button><button class="iconbtn" onclick="fromSet(${i})">✕</button></div>
-      </div></div>`+traco;
+        <div class="row" style="gap:4px;">${grip}${del}</div>
+      </div></div>${traco}</div>`;
     }
     n++;const st=STATUS[o.status];const a=AFIN[o.afin]||AFIN.e;
-    return `<div class="card" style="padding:10px 12px;${emendaCss}"><div class="row between"><div class="row grow" style="gap:10px;min-width:0;cursor:pointer;" onclick="openCuePanel('${iid}')">
-      <div style="font-family:var(--display);font-size:20px;color:var(--lime);width:26px;flex:none;">${n}</div>
+    return `<div class="set-item" data-iid="${iid}"><div class="card" style="padding:10px 12px;${emendaCss}"><div class="row between"><div class="row grow" style="gap:10px;min-width:0;cursor:pointer;" onclick="openCuePanel('${iid}')">
+      <div style="font-family:var(--display);font-size:20px;color:var(--lime);width:26px;flex:none;cursor:pointer;" title="Mover pra outra posição" onclick="event.stopPropagation();openMoveTo('${iid}')">${n}</div>
       <div class="grow" style="min-width:0;"><div style="font-family:var(--display);font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(o.name)}${o.fala?' 📢':''}</div>
       <div style="font-size:11px;color:var(--muted);font-family:var(--mono);">${st.emoji} ${fmtTime(o.dur)}${o.tom?' · '+esc(o.tom):''} · <span style="color:${a.cor};">${a.curto}</span> · ⚡${Math.min(5,Math.max(1,+o.energia||3))}</div>${chipRow}</div></div>
-      <div class="row" style="gap:4px;"><button class="iconbtn" onclick="moveSet(${i},-1)">▲</button><button class="iconbtn" onclick="moveSet(${i},1)">▼</button><button class="iconbtn" onclick="fromSet(${i})">✕</button></div>
-    </div></div>`+traco;
+      <div class="row" style="gap:4px;">${grip}${del}</div>
+    </div></div>${traco}</div>`;
   }).join("");
   $("#setBuilder").innerHTML=cur.songs.length
-    ?(raioXHtml(cur)+setFlagsHtml(cur)+'<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Toca na linha pra marcar emenda, banter, troca de afinação…</div>'+linhas)
+    ?(raioXHtml(cur)+setFlagsHtml(cur)
+      +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Toca na linha pra marcar emenda/banter · segura o <b>⠿</b> e arrasta pra reordenar · toca no <b>número</b> pra mandar pro topo, pro fim ou pra uma posição.</div>'
+      +'<div id="setRows">'+linhas+'</div>')
     :'<div class="empty">Setlist vazio. Escolhe embaixo 👇</div>';
   $("#setPool").innerHTML=DB.songs.map(s=>{const inSet=cur.songs.includes(s.id);const st=STATUS[s.status];const a=AFIN[s.afin]||AFIN.e;
     return `<div class="card" style="padding:10px 12px;opacity:${inSet?.4:1};" onclick="${inSet?'':`toSet('${s.id}')`}"><div class="row between">
@@ -1179,6 +1222,87 @@ function renderSet(){
         +'<span style="color:var(--amber);font-weight:700;">'+(inSet?"✓ no set":"+ add")+'</span></div></div>';}).join(""):"");
 }
 function toSetAudio(aid){const c=curSet();if(c&&!c.songs.includes(AUDP+aid)){c.songs.push(AUDP+aid);save();}}
+function fromSetId(iid){const c=curSet();if(!c)return;const i=c.songs.indexOf(iid);if(i<0)return;c.songs.splice(i,1);if(c.cueMap&&!c.songs.includes(iid))delete c.cueMap[iid];save();}
+
+/* ===== REORDENAR ARRASTANDO (pointer events: dedo e mouse) ===== */
+let _dragItem=null,_dragScroll=0;
+function dragStart(ev){
+  const item=ev.currentTarget.closest(".set-item");if(!item)return;
+  ev.preventDefault();ev.stopPropagation();
+  _dragItem=item;
+  item.style.opacity=".55";
+  item.style.transform="scale(.98)";
+  ev.currentTarget.style.cursor="grabbing";
+  try{ev.currentTarget.setPointerCapture(ev.pointerId);}catch(e){}
+  ev.currentTarget.addEventListener("pointermove",dragMove);
+  ev.currentTarget.addEventListener("pointerup",dragEnd);
+  ev.currentTarget.addEventListener("pointercancel",dragEnd);
+}
+function dragMove(ev){
+  if(!_dragItem)return;
+  ev.preventDefault();
+  // rola a tela sozinho perto das bordas
+  const margem=90,vh=window.innerHeight;
+  if(ev.clientY<margem)_dragScroll=-Math.ceil((margem-ev.clientY)/6);
+  else if(ev.clientY>vh-margem)_dragScroll=Math.ceil((ev.clientY-(vh-margem))/6);
+  else _dragScroll=0;
+  if(_dragScroll)window.scrollBy(0,_dragScroll);
+  _dragItem.style.pointerEvents="none";
+  const el=document.elementFromPoint(ev.clientX,ev.clientY);
+  _dragItem.style.pointerEvents="";
+  const alvo=el&&el.closest?el.closest(".set-item"):null;
+  if(!alvo||alvo===_dragItem)return;
+  const r=alvo.getBoundingClientRect();
+  const depois=ev.clientY>r.top+r.height/2;
+  alvo.parentNode.insertBefore(_dragItem,depois?alvo.nextSibling:alvo);
+}
+function dragEnd(ev){
+  const h=ev.currentTarget;
+  h.removeEventListener("pointermove",dragMove);
+  h.removeEventListener("pointerup",dragEnd);
+  h.removeEventListener("pointercancel",dragEnd);
+  try{h.releasePointerCapture(ev.pointerId);}catch(e){}
+  h.style.cursor="grab";
+  if(!_dragItem)return;
+  _dragItem.style.opacity="";_dragItem.style.transform="";
+  _dragItem=null;_dragScroll=0;
+  commitDragOrder();
+}
+function commitDragOrder(){
+  const c=curSet();if(!c)return;
+  const box=document.getElementById("setRows");if(!box)return;
+  const nova=[...box.querySelectorAll(".set-item")].map(el=>el.dataset.iid);
+  // nunca perde item: o que não estiver no DOM (id órfão) volta no fim
+  const sobra=c.songs.filter(x=>nova.indexOf(x)<0);
+  const final=nova.concat(sobra);
+  if(final.join("|")===c.songs.join("|")){renderSet();return;}
+  c.songs=final;save();toast("Ordem salva 🤘");
+}
+
+/* ===== MOVER PRA POSIÇÃO (toque no número) ===== */
+function openMoveTo(iid){
+  const c=curSet();if(!c)return;
+  const i=c.songs.indexOf(iid);if(i<0)return;
+  const o=itemObj(iid);if(!o)return;
+  const total=c.songs.length;
+  showModal('<h3>'+(isAud(iid)?"🔊 ":"")+esc(o.name)+'</h3>'
+    +'<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Está na posição <b>'+(i+1)+'</b> de '+total+'. Também dá pra segurar o ⠿ e arrastar.</div>'
+    +'<div class="row" style="gap:8px;margin-bottom:12px;">'
+    +'<button class="btn primary grow sm" onclick="moveToPos(\''+iid+'\',1)">▲ PRO TOPO</button>'
+    +'<button class="btn ghost grow sm" onclick="moveToPos(\''+iid+'\','+total+')">▼ PRO FIM</button></div>'
+    +'<div class="field"><label class="fld">Ou manda pra posição exata (1 a '+total+')</label><input id="mv_pos" type="number" min="1" max="'+total+'" value="'+(i+1)+'"></div>'
+    +'<button class="btn primary full" onclick="moveToPos(\''+iid+'\',null)">MOVER</button>');
+  setTimeout(()=>{try{const el=$("#mv_pos");el.focus();el.select();}catch(e){}},120);
+}
+function moveToPos(iid,pos){
+  const c=curSet();if(!c)return;
+  const i=c.songs.indexOf(iid);if(i<0)return;
+  let p=(pos===null||pos===undefined)?(+$("#mv_pos").value||i+1):pos;
+  p=Math.max(1,Math.min(c.songs.length,p));
+  c.songs.splice(i,1);
+  c.songs.splice(p-1,0,iid);
+  closeModal();save();toast("Movida pra "+p+" 🤘");
+}
 
 /* ===== GERADOR DE SETLIST INTELIGENTE ===== */
 function openSuggestSetlist(){
